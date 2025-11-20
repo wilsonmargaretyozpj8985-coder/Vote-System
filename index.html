@@ -3,99 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>在线问卷投票系统</title>
+    <title>云端问卷投票系统</title>
+    <!-- 引入 LeanCloud SDK -->
+    <script src="//code.bdstatic.com/npm/leancloud-storage@4.12.0/dist/av-min.js"></script>
     <style>
-        :root {
-            --primary: #2d5afe;
-            --primary-hover: #1e40cb;
-            --success: #36d399;
-            --danger: #ff6b6b;
-            --bg: #f3f4f6;
-            --card: #ffffff;
-            --text: #333333;
-            --text-light: #666666;
-            --border: #e5e7eb;
-        }
-
+        :root { --primary: #2d5afe; --primary-hover: #1e40cb; --success: #36d399; --danger: #ff6b6b; --bg: #f3f4f6; --card: #ffffff; --text: #333333; --border: #e5e7eb; }
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: var(--bg); color: var(--text); line-height: 1.6; padding-bottom: 40px; }
-
-        /* 通用组件 */
-        .btn { display: inline-block; padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; text-align: center; }
-        .btn-primary { background-color: var(--primary); color: white; }
-        .btn-primary:active { background-color: var(--primary-hover); }
-        .btn-success { background-color: var(--success); color: white; }
-        .btn-danger { background-color: var(--danger); color: white; }
-        .btn-outline { background-color: transparent; border: 1px solid var(--border); color: var(--text); }
-        .btn-sm { padding: 4px 10px; font-size: 12px; }
-        .input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 16px; margin-bottom: 10px; outline: none; }
-        .input:focus { border-color: var(--primary); }
-
-        /* 布局 */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--text); padding-bottom: 40px; }
         .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: var(--card); padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        .user-info { font-size: 14px; color: var(--text-light); }
-        .role-badge { background: var(--primary); color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-left: 5px; }
         
-        /* 管理面板 */
-        .admin-panel { background: #e0e7ff; border: 1px solid #c7d2fe; padding: 15px; border-radius: 10px; margin-bottom: 20px; display: none; }
-        .admin-panel.active { display: block; }
-        .tool-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+        /* 组件样式 */
+        .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; font-weight: 500; color: white; transition: 0.2s; }
+        .btn-primary { background: var(--primary); }
+        .btn-success { background: var(--success); }
+        .btn-danger { background: var(--danger); }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+        .input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 10px; }
+        
+        /* 布局细节 */
+        .header { display: flex; justify-content: space-between; align-items: center; background: var(--card); padding: 15px; border-radius: 10px; margin-bottom: 20px; }
+        .question-card { background: var(--card); padding: 20px; border-radius: 10px; margin-bottom: 20px; position: relative; }
+        .admin-panel { background: #e0e7ff; padding: 15px; border-radius: 10px; margin-bottom: 20px; display: none; }
+        .options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 15px 0; }
+        .opt-btn { background: #f8f9fa; border: 1px solid var(--border); padding: 12px; border-radius: 8px; cursor: pointer; text-align: center; transition: 0.2s; }
+        .opt-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
+        
+        /* 结果条 */
+        .result-row { margin-top: 8px; font-size: 13px; }
+        .progress-bg { background: #eee; height: 6px; border-radius: 3px; margin-top: 4px; overflow: hidden; }
+        .progress-bar { background: var(--primary); height: 100%; width: 0; transition: width 0.5s; }
 
-        /* 题目卡片 */
-        .question-card { background: var(--card); border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); position: relative; transition: transform 0.2s; }
-        .q-header { margin-bottom: 15px; border-bottom: 1px solid var(--bg); padding-bottom: 10px; }
-        .q-title { font-size: 18px; font-weight: bold; color: var(--text); display: flex; align-items: center; gap: 10px; }
-        .q-tag { font-size: 12px; color: var(--primary); background: rgba(45, 90, 254, 0.1); padding: 2px 6px; border-radius: 4px; font-weight: normal; }
-        .q-actions { position: absolute; top: 20px; right: 20px; display: none; gap: 5px; }
-        
-        /* 选项样式 */
-        .options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 15px; }
-        .opt-btn { 
-            background: #f8f9fa; border: 1px solid var(--border); padding: 12px; border-radius: 8px; 
-            text-align: center; cursor: pointer; position: relative; overflow: hidden; user-select: none;
-            transition: all 0.2s;
-        }
-        .opt-btn.selected { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 4px 6px rgba(45, 90, 254, 0.2); }
-        .opt-btn.selected::after { content: "✓"; position: absolute; top: 2px; right: 5px; font-size: 12px; }
-        
-        /* 结果展示 */
-        .results-area { margin-top: 15px; font-size: 13px; color: var(--text-light); background: #f9fafb; padding: 10px; border-radius: 6px; display: none; }
-        .result-row { display: flex; justify-content: space-between; margin-bottom: 4px; border-bottom: 1px dotted #eee; padding-bottom: 2px; }
-        
         /* 模态框 */
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: none; justify-content: center; align-items: center; }
-        .modal.active { display: flex; }
-        .modal-content { background: white; width: 90%; max-width: 500px; border-radius: 12px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-height: 90vh; overflow-y: auto; }
-        .modal-title { font-size: 20px; margin-bottom: 20px; font-weight: bold; }
-        .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-
-        /* Toast */
-        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; font-size: 14px; display: none; z-index: 2000; }
-
-        /* 动态选项输入 */
-        .dynamic-inputs { margin-bottom: 10px; }
-        .input-group { display: flex; gap: 5px; margin-bottom: 8px; }
-        .remove-opt { color: var(--danger); font-size: 20px; cursor: pointer; line-height: 40px; }
-
-        /* 登录页 */
-        #login-page { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 500; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
-        
-        /* 响应式微调 */
-        @media (max-width: 480px) {
-            .options-grid { grid-template-columns: 1fr; }
-            .q-title { font-size: 16px; }
-        }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
+        #loading-mask { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); z-index:2000; display:flex; justify-content:center; align-items:center; font-weight:bold; color: var(--primary); }
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; display: none; z-index: 2000; }
     </style>
 </head>
 <body>
 
+    <!-- 加载遮罩 -->
+    <div id="loading-mask">系统连接中...</div>
+
     <!-- 登录页 -->
-    <div id="login-page">
-        <h2 style="margin-bottom: 20px; color: var(--primary);">问卷投票系统</h2>
-        <div style="width: 100%; max-width: 300px;">
-            <input type="text" id="login-name" class="input" placeholder="请输入您的姓名" maxlength="15">
-            <p style="font-size: 12px; color: #888; margin-bottom: 15px;">2-15个字符，支持中英文、空格</p>
+    <div id="login-page" class="modal" style="display: flex; background: white;">
+        <div style="text-align: center; width: 100%; max-width: 300px;">
+            <h2 style="color: var(--primary); margin-bottom: 20px;">在线投票系统</h2>
+            <input type="text" id="login-name" class="input" placeholder="输入您的姓名 (2-15字)" maxlength="15">
             <button onclick="handleLogin()" class="btn btn-primary" style="width: 100%;">进入系统</button>
         </div>
     </div>
@@ -105,529 +59,381 @@
         <div class="header">
             <div>
                 <span id="user-display" style="font-weight: bold;"></span>
-                <span id="role-badge" class="role-badge" style="display: none;">User</span>
+                <span id="role-badge" style="font-size: 12px; background: #eee; padding: 2px 6px; border-radius: 4px; margin-left: 5px;">User</span>
             </div>
-            <button onclick="showAuthModal()" class="btn btn-sm btn-outline">权限登录</button>
+            <button onclick="showAuthModal()" class="btn btn-outline" style="font-size: 12px;">权限</button>
         </div>
 
-        <!-- 管理员/Presenter 面板 -->
         <div id="admin-panel" class="admin-panel">
-            <h4 id="panel-title">管理控制台</h4>
-            <div class="tool-bar">
-                <!-- Admin Buttons -->
-                <button onclick="openQuestionModal()" class="btn btn-primary btn-sm admin-only">新增题目</button>
-                <button onclick="exportData()" class="btn btn-success btn-sm admin-only">导出 CSV</button>
-                <button onclick="generateShareLink()" class="btn btn-primary btn-sm admin-only" style="background: #7c3aed;">生成共享链接</button>
-                <!-- Presenter/Admin Buttons -->
-                <button onclick="toggleFilterMode()" class="btn btn-outline btn-sm">筛选题目</button>
-                <div id="share-link-box" style="width: 100%; margin-top: 10px; display: none;">
-                    <input type="text" id="share-url-input" class="input" readonly style="font-size: 12px; color: #666;">
-                    <span style="font-size: 12px; color: var(--success);">已复制到剪贴板！</span>
+            <h4 style="margin-bottom: 10px;">管理员控制台 <span id="sync-status" style="font-size:12px; font-weight:normal; color:#666;">(数据自动同步)</span></h4>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="openQuestionModal()" class="btn btn-primary">新增题目</button>
+                <button onclick="syncData(true)" class="btn btn-success">手动刷新数据</button>
+                <button onclick="generateCloudLink()" class="btn btn-primary" style="background: #7c3aed;">复制问卷链接</button>
+                <div id="link-area" style="width: 100%; display:none; margin-top:5px;">
+                    <input type="text" id="share-url" class="input" readonly style="font-size:12px;">
+                    <small style="color:green">请将此链接发给用户，他们才能看到这些题目。</small>
                 </div>
             </div>
         </div>
 
-        <!-- 题目列表 -->
         <div id="questions-container"></div>
     </div>
 
-    <!-- 题目编辑模态框 -->
+    <!-- 题目编辑弹窗 -->
     <div id="question-modal" class="modal">
         <div class="modal-content">
-            <div class="modal-title">编辑题目</div>
+            <h3>编辑题目</h3><br>
             <input type="hidden" id="edit-id">
-            <label>题目标题 (必填)</label>
-            <input type="text" id="q-title-input" class="input" placeholder="例如：周末去哪里团建？">
-            
-            <label>选项设置 (至少1个)</label>
-            <div id="options-container" class="dynamic-inputs"></div>
-            <button onclick="addOptionInput()" class="btn btn-sm btn-outline" style="width: 100%;">+ 添加选项</button>
-            
-            <div class="modal-footer">
+            <input type="text" id="q-title" class="input" placeholder="题目标题">
+            <div id="opt-container"></div>
+            <button onclick="addOptInput()" class="btn btn-outline" style="width:100%; margin-bottom:15px;">+ 添加选项</button>
+            <div style="text-align: right; gap: 10px; display: flex; justify-content: flex-end;">
                 <button onclick="closeModal('question-modal')" class="btn btn-outline">取消</button>
-                <button onclick="saveQuestion()" class="btn btn-primary">保存</button>
+                <button onclick="saveQuestionToCloud()" class="btn btn-primary">保存到云端</button>
             </div>
         </div>
     </div>
 
-    <!-- 权限登录模态框 -->
+    <!-- 权限弹窗 -->
     <div id="auth-modal" class="modal">
-        <div class="modal-content" style="max-width: 350px;">
-            <div class="modal-title">管理员/主讲人 登录</div>
-            <input type="password" id="auth-password" class="input" placeholder="请输入密码">
-            <div class="modal-footer">
+        <div class="modal-content" style="max-width: 300px;">
+            <h3>管理员登录</h3><br>
+            <input type="password" id="auth-pwd" class="input" placeholder="密码 (admin123)">
+            <div style="text-align: right;">
                 <button onclick="closeModal('auth-modal')" class="btn btn-outline">取消</button>
-                <button onclick="handleAuth()" class="btn btn-primary">登录</button>
+                <button onclick="handleAuth()" class="btn btn-primary">确认</button>
             </div>
         </div>
     </div>
 
-    <div id="toast" class="toast">操作成功</div>
+    <div id="toast" class="toast"></div>
 
     <script>
-        // --- 数据状态 ---
-        const STORE_KEY = 'quiz_data_v1';
-        const USER_KEY = 'quiz_user_name';
-        
+        // ================= 配置区域 (请修改这里) =================
+        const APP_ID = 'KAyiDICFvpWjSCXaTpVvqVFs-MdYXbMMI'; 
+        const APP_KEY = 'Ctugi8vi6ryC3NHKv3hjUPXf';
+        const API_SERVER = 'https://avoscloud.com'; // 国际版默认节点
+        // ======================================================
+
         let state = {
-            currentUser: '',
-            role: 'user', // user, presenter, admin
-            questions: [], // { id, title, options: [], visible: true }
-            votes: {}, // { questionId: { optionText: [userNames] } }
-            tempSelections: {} // { questionId: [selectedOptions] }
+            user: '',
+            role: 'user',
+            quizId: null, // 云端数据库的 Object ID
+            questions: [], // 题目数据
+            votes: {}, // 投票数据
+            tempSelections: {}
         };
 
-        // --- 初始化 ---
-        window.onload = function() {
-            loadLocalData();
-            loadUrlData(); // URL 数据覆盖本地题目配置（如果存在）
-            checkUserLogin();
-        };
-
-        // --- 核心逻辑：数据处理 ---
-        function saveData() {
-            const dataToSave = {
-                questions: state.questions,
-                votes: state.votes
-            };
-            localStorage.setItem(STORE_KEY, JSON.stringify(dataToSave));
-        }
-
-        function loadLocalData() {
-            const raw = localStorage.getItem(STORE_KEY);
-            if (raw) {
-                const data = JSON.parse(raw);
-                state.questions = data.questions || [];
-                state.votes = data.votes || {};
-            }
-        }
-
-        function loadUrlData() {
-            const params = new URLSearchParams(window.location.search);
-            const encodedData = params.get('quiz_data');
-            if (encodedData) {
-                try {
-                    // 解码 Base64 (处理中文乱码问题)
-                    const jsonStr = decodeURIComponent(escape(window.atob(encodedData)));
-                    const sharedData = JSON.parse(jsonStr);
-                    // 仅更新题目结构，保留本地投票数据（或者根据需求覆盖）
-                    // 此处策略：覆盖题目，保留已存在的投票ID结构
-                    state.questions = sharedData;
-                    saveData();
-                    // 清除 URL 参数防止刷新重复加载
-                    window.history.replaceState({}, document.title, window.location.pathname);
-                    showToast('已加载最新问卷数据');
-                } catch (e) {
-                    console.error('URL Data parse error', e);
-                }
-            }
-        }
-
-        // --- 权限与用户 ---
-        function checkUserLogin() {
-            const savedName = localStorage.getItem(USER_KEY);
-            if (savedName) {
-                state.currentUser = savedName;
-                document.getElementById('login-page').style.display = 'none';
-                document.getElementById('main-app').style.display = 'block';
-                updateUI();
-            }
-        }
-
-        function handleLogin() {
-            const nameInput = document.getElementById('login-name');
-            const name = nameInput.value.trim();
-            // 验证：2-15字符，中英文空格
-            const regex = /^[a-zA-Z\u4e00-\u9fa5\s]{2,15}$/;
-            
-            if (!regex.test(name)) {
-                alert('请输入有效的姓名（2-15位，仅限中英文和空格）');
+        // 初始化 LeanCloud
+        function initDB() {
+            if(APP_ID.includes('这里填入')) {
+                alert('请编辑代码，填入 LeanCloud 的 AppID 和 AppKey！');
                 return;
             }
-            
-            localStorage.setItem(USER_KEY, name);
-            state.currentUser = name;
-            document.getElementById('login-page').style.display = 'none';
-            document.getElementById('main-app').style.display = 'block';
-            updateUI();
+            AV.init({ appId: APP_ID, appKey: APP_KEY, serverURLs: API_SERVER });
+            checkUrlForQuizId();
+        }
+
+        window.onload = function() {
+            initDB();
+            const savedUser = localStorage.getItem('vote_user');
+            if(savedUser) {
+                state.user = savedUser;
+                document.getElementById('login-page').style.display = 'none';
+                document.getElementById('main-app').style.display = 'block';
+                document.getElementById('user-display').textContent = state.user;
+                loadCloudData(); // 登录后加载数据
+            } else {
+                document.getElementById('loading-mask').style.display = 'none';
+            }
+        };
+
+        // --- 云端数据核心逻辑 ---
+
+        // 1. 解析 URL 获取 QuizID
+        function checkUrlForQuizId() {
+            const params = new URLSearchParams(window.location.search);
+            state.quizId = params.get('id');
+        }
+
+        // 2. 从云端拉取数据 (读)
+        async function loadCloudData() {
+            document.getElementById('loading-mask').style.display = 'flex';
+            try {
+                if (!state.quizId) {
+                    // 如果没有 ID，说明是新建模式，不做任何事，等待管理员操作
+                    document.getElementById('loading-mask').style.display = 'none';
+                    if(state.role === 'user') {
+                        document.getElementById('questions-container').innerHTML = 
+                            '<div style="text-align:center;padding:50px;color:#888">无效的问卷链接，请联系发布者。</div>';
+                    }
+                    return;
+                }
+
+                const query = new AV.Query('QuizTable');
+                const record = await query.get(state.quizId);
+                
+                if (record) {
+                    state.questions = record.get('questions') || [];
+                    state.votes = record.get('votes') || {};
+                    renderUI();
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('数据加载失败: ' + error.message);
+            } finally {
+                document.getElementById('loading-mask').style.display = 'none';
+            }
+        }
+
+        // 3. 保存题目到云端 (写)
+        async function saveToCloud(showMsg = true) {
+            document.getElementById('loading-mask').style.display = 'flex';
+            try {
+                // 创建或更新
+                const QuizTable = AV.Object.extend('QuizTable');
+                let quiz;
+                
+                if (state.quizId) {
+                    quiz = AV.Object.createWithoutData('QuizTable', state.quizId);
+                } else {
+                    quiz = new QuizTable();
+                }
+
+                quiz.set('questions', state.questions);
+                // 注意：这里不覆盖 votes，以免误删投票。投票通过单独逻辑更新
+                // 但如果是新建问卷，可以初始化
+                if(!state.quizId) quiz.set('votes', {}); 
+                
+                const saved = await quiz.save();
+                state.quizId = saved.id; // 拿到 ID
+                
+                // 更新 URL
+                const newUrl = `${window.location.pathname}?id=${state.quizId}`;
+                window.history.replaceState({}, '', newUrl);
+                
+                if(showMsg) showToast('云端保存成功！');
+                renderUI();
+            } catch (error) {
+                alert('保存失败: ' + error.message);
+            } finally {
+                document.getElementById('loading-mask').style.display = 'none';
+            }
+        }
+
+        // 4. 提交投票到云端 (并发安全写)
+        async function submitVoteToCloud(qid, selections) {
+            document.getElementById('loading-mask').style.display = 'flex';
+            try {
+                // 使用 LeanCloud 原子操作或简单的拉取-修改-保存模式
+                // 为了简单起见，这里使用 拉取最新 -> 修改 -> 保存 的模式
+                // ⚠️ 注意：高并发下可能会有冲突，完美方案需要云函数，但纯前端使用此方案足矣
+                const quiz = await new AV.Query('QuizTable').get(state.quizId);
+                let currentVotes = quiz.get('votes') || {};
+                
+                if(!currentVotes[qid]) currentVotes[qid] = {};
+
+                selections.forEach(opt => {
+                    if(!currentVotes[qid][opt]) currentVotes[qid][opt] = [];
+                    if(!currentVotes[qid][opt].includes(state.user)) {
+                        currentVotes[qid][opt].push(state.user);
+                    }
+                });
+
+                quiz.set('votes', currentVotes);
+                await quiz.save();
+                
+                state.votes = currentVotes; // 更新本地视图
+                showToast('投票成功！');
+                delete state.tempSelections[qid];
+                renderUI();
+
+            } catch (error) {
+                alert('投票失败，请重试: ' + error.message);
+                loadCloudData(); // 失败后刷新数据
+            } finally {
+                document.getElementById('loading-mask').style.display = 'none';
+            }
+        }
+
+        // --- 业务逻辑 ---
+
+        function handleLogin() {
+            const name = document.getElementById('login-name').value.trim();
+            if(name.length < 2) return alert('请输入名字');
+            localStorage.setItem('vote_user', name);
+            state.user = name;
+            location.reload();
         }
 
         function handleAuth() {
-            const pwd = document.getElementById('auth-password').value;
-            if (pwd === 'admin123') {
+            const pwd = document.getElementById('auth-pwd').value;
+            if(pwd === 'admin123') {
                 state.role = 'admin';
-                showToast('管理员登录成功');
-            } else if (pwd === 'presenter123') {
-                state.role = 'presenter';
-                showToast('主讲人登录成功');
+                document.getElementById('admin-panel').style.display = 'block';
+                document.getElementById('role-badge').textContent = 'Admin';
+                document.getElementById('role-badge').style.background = '#ff6b6b';
+                document.getElementById('role-badge').style.color = 'white';
+                closeModal('auth-modal');
+                showToast('管理员模式');
+                renderUI(); // 显示编辑按钮
             } else {
                 alert('密码错误');
-                return;
             }
-            closeModal('auth-modal');
-            document.getElementById('auth-password').value = '';
-            updateUI();
         }
 
-        // --- UI 渲染 ---
-        function updateUI() {
-            document.getElementById('user-display').textContent = state.currentUser;
-            
-            // 角色徽章
-            const badge = document.getElementById('role-badge');
-            if (state.role !== 'user') {
-                badge.style.display = 'inline-block';
-                badge.textContent = state.role === 'admin' ? 'Admin' : 'Presenter';
-                badge.style.background = state.role === 'admin' ? '#ff6b6b' : '#36d399';
-            }
-
-            // 管理面板显隐
-            const panel = document.getElementById('admin-panel');
-            if (state.role === 'admin' || state.role === 'presenter') {
-                panel.classList.add('active');
-                // 按钮级别权限
-                const adminBtns = document.querySelectorAll('.admin-only');
-                adminBtns.forEach(btn => btn.style.display = state.role === 'admin' ? 'inline-block' : 'none');
-            } else {
-                panel.classList.remove('active');
-            }
-
-            renderQuestions();
-        }
-
-        function renderQuestions() {
+        function renderUI() {
             const container = document.getElementById('questions-container');
             container.innerHTML = '';
 
-            if (state.questions.length === 0) {
-                container.innerHTML = '<div style="text-align:center; color:#999; padding:40px;">暂无题目，请等待管理员添加或分享</div>';
-                return;
-            }
-
             state.questions.forEach(q => {
-                // 过滤逻辑：如果是普通用户，只显示可见题目；Admin/Presenter 显示所有但标记状态
-                if (state.role === 'user' && !q.visible) return;
+                // 获取当前用户是否投过票
+                const myVotes = getMyVotes(q.id);
+                const hasVoted = myVotes.length > 0;
 
-                const card = document.createElement('div');
-                card.className = 'question-card';
-                if (!q.visible) card.style.opacity = '0.6';
-
-                // 头部
-                let actionsHtml = '';
-                if (state.role === 'admin') {
-                    actionsHtml = `
-                        <div class="q-actions" style="display:flex;">
-                            <button onclick="editQuestion('${q.id}')" class="btn btn-sm btn-primary">编辑</button>
-                            <button onclick="toggleVisibility('${q.id}')" class="btn btn-sm ${q.visible ? 'btn-success' : 'btn-outline'}">${q.visible ? '显示中' : '已隐藏'}</button>
-                            <button onclick="deleteQuestion('${q.id}')" class="btn btn-sm btn-danger">删除</button>
-                        </div>
-                    `;
-                } else if (state.role === 'presenter') {
-                    actionsHtml = `
-                         <div class="q-actions" style="display:flex;">
-                            <button onclick="toggleVisibility('${q.id}')" class="btn btn-sm ${q.visible ? 'btn-success' : 'btn-outline'}">${q.visible ? '显示中' : '已隐藏'}</button>
-                        </div>
-                    `;
-                }
-
-                const userVotes = getUserVotesForQuestion(q.id);
-                const hasVoted = userVotes.length > 0;
-                
-                // 选项渲染
-                let optionsHtml = '<div class="options-grid">';
+                // 构建选项 HTML
+                let optsHtml = '<div class="options-grid">';
                 q.options.forEach(opt => {
-                    // 判断选中状态：如果已提交过，用数据库数据；如果是操作中，用临时数据
-                    const tempSelected = (state.tempSelections[q.id] || []).includes(opt);
-                    const isSelected = hasVoted ? userVotes.includes(opt) : tempSelected;
-                    
-                    optionsHtml += `
-                        <button class="opt-btn ${isSelected ? 'selected' : ''}" 
-                            onclick="handleOptionClick('${q.id}', '${opt}')">
-                            ${opt}
-                        </button>
-                    `;
+                    const isSelected = state.tempSelections[q.id]?.includes(opt) || myVotes.includes(opt);
+                    optsHtml += `<div class="opt-btn ${isSelected ? 'selected' : ''}" 
+                        onclick="toggleSelect('${q.id}', '${opt}', ${hasVoted})">${opt}</div>`;
                 });
-                optionsHtml += '</div>';
+                optsHtml += '</div>';
 
-                // 提交按钮
-                const submitBtn = !hasVoted ? 
-                    `<button onclick="submitVote('${q.id}')" class="btn btn-primary" style="width:100%">提交投票</button>` :
-                    `<button class="btn btn-success" style="width:100%" disabled>已投票 (选中: ${userVotes.join(', ')})</button>`;
+                // 结果条 (投票后或管理员可见)
+                let resultHtml = '';
+                if(hasVoted || state.role === 'admin') {
+                    resultHtml = '<div style="margin-top:15px; padding-top:10px; border-top:1px dashed #eee;">';
+                    const qVotes = state.votes[q.id] || {};
+                    // 计算总票数用来算百分比
+                    let total = 0;
+                    q.options.forEach(o => total += (qVotes[o]?.length || 0));
 
-                // 结果展示 (Admin/Presenter/已投票用户可见)
-                let resultsHtml = '';
-                if (state.role !== 'user' || hasVoted) {
-                    resultsHtml = renderResults(q.id, q.options);
+                    q.options.forEach(opt => {
+                        const voters = qVotes[opt] || [];
+                        const count = voters.length;
+                        const pct = total > 0 ? Math.round(count/total * 100) : 0;
+                        resultHtml += `
+                            <div class="result-row">
+                                <div style="display:flex; justify-content:space-between;">
+                                    <span>${opt}</span>
+                                    <span>${count}票 (${voters.join(', ')})</span>
+                                </div>
+                                <div class="progress-bg"><div class="progress-bar" style="width:${pct}%"></div></div>
+                            </div>
+                        `;
+                    });
+                    resultHtml += '</div>';
                 }
 
-                card.innerHTML = `
-                    ${actionsHtml}
-                    <div class="q-header">
-                        <div class="q-title">
-                            ${q.title}
-                            <span class="q-tag">可多选</span>
-                            ${!q.visible ? '<span style="color:red;font-size:12px;">(隐藏)</span>' : ''}
-                        </div>
-                    </div>
-                    ${optionsHtml}
-                    ${submitBtn}
-                    ${resultsHtml}
-                `;
+                // 按钮
+                const btn = !hasVoted 
+                    ? `<button onclick="submitVote('${q.id}')" class="btn btn-primary" style="width:100%">提交投票</button>`
+                    : `<button class="btn btn-success" disabled style="width:100%">已投票</button>`;
 
-                container.appendChild(card);
+                // 删除按钮
+                const delBtn = state.role === 'admin' 
+                    ? `<button onclick="deleteQuestion('${q.id}')" style="position:absolute; top:15px; right:15px; font-size:12px;" class="btn btn-danger">删除</button>` 
+                    : '';
+
+                const html = `
+                    <div class="question-card">
+                        ${delBtn}
+                        <h3>${q.title} <span style="font-size:12px; color:#888; font-weight:normal">(可多选)</span></h3>
+                        ${optsHtml}
+                        ${btn}
+                        ${resultHtml}
+                    </div>
+                `;
+                container.appendChild(document.createRange().createContextualFragment(html));
             });
         }
 
-        function renderResults(qid, options) {
-            const qVotes = state.votes[qid] || {};
-            let totalVotes = 0;
-            let html = '<div class="results-area" style="display:block;">';
-            
-            // 计算总数
-            options.forEach(opt => {
-                const voters = qVotes[opt] || [];
-                totalVotes += voters.length;
-            });
-            
-            html += `<div style="margin-bottom:5px; font-weight:bold;">实时结果 (总票次: ${totalVotes})</div>`;
-
-            options.forEach(opt => {
-                const voters = qVotes[opt] || [];
-                const count = voters.length;
-                const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                
-                html += `
-                    <div class="result-row">
-                        <span>${opt} <small>(${count}票 - ${percent}%)</small></span>
-                        <span style="text-align:right; max-width: 50%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                            ${voters.join(', ')}
-                        </span>
-                    </div>
-                    <div style="height:4px; background:#eee; border-radius:2px; margin-bottom:8px; overflow:hidden;">
-                        <div style="height:100%; width:${percent}%; background:var(--primary);"></div>
-                    </div>
-                `;
-            });
-            html += '</div>';
-            return html;
-        }
-
-        // --- 交互逻辑 ---
-
-        function handleOptionClick(qid, option) {
-            // 检查是否已提交
-            const userVotes = getUserVotesForQuestion(qid);
-            if (userVotes.length > 0) {
-                showToast('您已完成该题投票，不可修改');
-                return;
-            }
-
-            // 初始化临时选择数组
-            if (!state.tempSelections[qid]) {
-                state.tempSelections[qid] = [];
-            }
-
-            const idx = state.tempSelections[qid].indexOf(option);
-            if (idx > -1) {
-                // 取消选中
-                state.tempSelections[qid].splice(idx, 1);
-            } else {
-                // 选中
-                state.tempSelections[qid].push(option);
-            }
-            
-            renderQuestions(); // 重绘以更新视觉状态
+        function toggleSelect(qid, opt, locked) {
+            if(locked) return;
+            if(!state.tempSelections[qid]) state.tempSelections[qid] = [];
+            const idx = state.tempSelections[qid].indexOf(opt);
+            if(idx > -1) state.tempSelections[qid].splice(idx, 1);
+            else state.tempSelections[qid].push(opt);
+            renderUI();
         }
 
         function submitVote(qid) {
-            const selections = state.tempSelections[qid];
-            if (!selections || selections.length === 0) {
-                alert('请至少选择一个选项');
-                return;
-            }
+            const sels = state.tempSelections[qid];
+            if(!sels || sels.length === 0) return alert('请至少选一项');
+            submitVoteToCloud(qid, sels);
+        }
 
-            // 初始化存储结构
-            if (!state.votes[qid]) state.votes[qid] = {};
+        function getMyVotes(qid) {
+            const qVotes = state.votes[qid];
+            if(!qVotes) return [];
+            return Object.keys(qVotes).filter(opt => qVotes[opt].includes(state.user));
+        }
 
-            // 记录每一票
-            selections.forEach(opt => {
-                if (!state.votes[qid][opt]) state.votes[qid][opt] = [];
-                // 避免同名重复（简单处理）
-                if (!state.votes[qid][opt].includes(state.currentUser)) {
-                    state.votes[qid][opt].push(state.currentUser);
-                }
+        // --- 管理逻辑 ---
+        
+        function openQuestionModal() {
+            document.getElementById('q-title').value = '';
+            document.getElementById('opt-container').innerHTML = '';
+            addOptInput(); addOptInput();
+            document.getElementById('question-modal').style.display = 'flex';
+        }
+
+        function addOptInput() {
+            const div = document.createElement('div');
+            div.style.marginBottom = '5px';
+            div.innerHTML = `<input type="text" class="input opt-input" placeholder="选项">`;
+            document.getElementById('opt-container').appendChild(div);
+        }
+
+        function saveQuestionToCloud() {
+            const title = document.getElementById('q-title').value;
+            const opts = Array.from(document.querySelectorAll('.opt-input')).map(i => i.value.trim()).filter(v=>v);
+            if(!title || opts.length < 2) return alert('请完善题目信息');
+
+            state.questions.push({
+                id: Date.now().toString(),
+                title: title,
+                options: opts
             });
 
-            saveData();
-            
-            // 清理临时状态
-            delete state.tempSelections[qid];
-            
-            showToast(`投票成功！您选择了：${selections.join(', ')}`);
-            
-            // 模拟 Admin 提醒 (如果当前是Admin登录，自己投票也会触发)
-            if (state.role === 'admin') {
-                showToast('收到新投票数据');
-            }
-            
-            renderQuestions();
-        }
-
-        function getUserVotesForQuestion(qid) {
-            const qVotes = state.votes[qid];
-            if (!qVotes) return [];
-            
-            const myVotes = [];
-            for (let opt in qVotes) {
-                if (qVotes[opt].includes(state.currentUser)) {
-                    myVotes.push(opt);
-                }
-            }
-            return myVotes;
-        }
-
-        // --- 管理员功能 ---
-
-        function openQuestionModal(editId = null) {
-            const modal = document.getElementById('question-modal');
-            const container = document.getElementById('options-container');
-            const titleInput = document.getElementById('q-title-input');
-            const idInput = document.getElementById('edit-id');
-            
-            container.innerHTML = '';
-            idInput.value = '';
-            titleInput.value = '';
-
-            if (editId) {
-                const q = state.questions.find(x => x.id === editId);
-                if (q) {
-                    idInput.value = q.id;
-                    titleInput.value = q.title;
-                    q.options.forEach(opt => addOptionInput(opt));
-                }
-            } else {
-                // 默认2个选项
-                addOptionInput();
-                addOptionInput();
-            }
-            
-            modal.classList.add('active');
-        }
-
-        function addOptionInput(value = '') {
-            const div = document.createElement('div');
-            div.className = 'input-group';
-            div.innerHTML = `
-                <input type="text" class="input option-input" value="${value}" placeholder="选项内容">
-                <span class="remove-opt" onclick="this.parentElement.remove()">×</span>
-            `;
-            document.getElementById('options-container').appendChild(div);
-        }
-
-        function saveQuestion() {
-            const id = document.getElementById('edit-id').value;
-            const title = document.getElementById('q-title-input').value.trim();
-            const optInputs = document.querySelectorAll('.option-input');
-            const options = Array.from(optInputs).map(i => i.value.trim()).filter(v => v !== '');
-
-            if (!title) { alert('请输入题目标题'); return; }
-            if (options.length < 1) { alert('至少添加一个选项'); return; }
-
-            if (id) {
-                // 编辑
-                const qIndex = state.questions.findIndex(x => x.id === id);
-                if (qIndex > -1) {
-                    state.questions[qIndex].title = title;
-                    state.questions[qIndex].options = options;
-                }
-            } else {
-                // 新增
-                state.questions.push({
-                    id: Date.now().toString(),
-                    title: title,
-                    options: options,
-                    visible: true
-                });
-            }
-
-            saveData();
+            saveToCloud(); // 保存整个题目数组到云端
             closeModal('question-modal');
-            renderQuestions();
-            showToast(id ? '修改成功' : '添加成功');
         }
 
-        function deleteQuestion(id) {
-            if (confirm('确定删除该题目及其所有投票数据吗？')) {
-                state.questions = state.questions.filter(q => q.id !== id);
-                delete state.votes[id];
-                saveData();
-                renderQuestions();
-                showToast('已删除');
-            }
+        function deleteQuestion(qid) {
+            if(!confirm('确定删除？所有人的投票也会消失。')) return;
+            state.questions = state.questions.filter(q => q.id !== qid);
+            // 清理该题目的投票数据
+            if(state.votes[qid]) delete state.votes[qid];
+            saveToCloud();
         }
 
-        function toggleVisibility(id) {
-            const q = state.questions.find(x => x.id === id);
-            if (q) {
-                q.visible = !q.visible;
-                saveData();
-                renderQuestions();
-            }
-        }
-
-        function generateShareLink() {
-            // 仅导出题目结构，不包含本地投票数据
-            const jsonStr = JSON.stringify(state.questions);
-            // 处理中文编码
-            const encoded = window.btoa(unescape(encodeURIComponent(jsonStr)));
-            const url = `${window.location.origin}${window.location.pathname}?quiz_data=${encoded}`;
-            
-            const input = document.getElementById('share-url-input');
+        function generateCloudLink() {
+            if(!state.quizId) return alert('请先添加题目并保存，系统会自动生成ID');
+            // 链接就是当前 URL (已经包含了 ?id=xxx)
+            const url = window.location.href;
+            const input = document.getElementById('share-url');
+            document.getElementById('link-area').style.display = 'block';
             input.value = url;
-            document.getElementById('share-link-box').style.display = 'block';
-            
             input.select();
             document.execCommand('copy');
-            showToast('链接已复制，可直接粘贴分享');
+            showToast('链接已复制！');
         }
 
-        function exportData() {
-            let csvContent = "data:text/csv;charset=utf-8,\ufeff"; // BOM for Excel
-            csvContent += "题目ID,题目标题,选项,投票人姓名,本选项票数\n";
-
-            state.questions.forEach(q => {
-                const qVotes = state.votes[q.id] || {};
-                q.options.forEach(opt => {
-                    const voters = qVotes[opt] || [];
-                    const voterStr = voters.join(';');
-                    csvContent += `"${q.id}","${q.title}","${opt}","${voterStr}",${voters.length}\n`;
-                });
-            });
-
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", "voting_data_" + new Date().toISOString().slice(0,10) + ".csv");
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+        function syncData(manual) {
+            loadCloudData();
+            if(manual) showToast('已同步最新数据');
         }
 
-        // --- 工具函数 ---
-
-        function showAuthModal() {
-            document.getElementById('auth-modal').classList.add('active');
-        }
-
-        function closeModal(id) {
-            document.getElementById(id).classList.remove('active');
-        }
-
+        // 工具
+        function showAuthModal() { document.getElementById('auth-modal').style.display = 'flex'; }
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
         function showToast(msg) {
             const t = document.getElementById('toast');
-            t.textContent = msg;
-            t.style.display = 'block';
-            setTimeout(() => { t.style.display = 'none'; }, 3000);
+            t.textContent = msg; t.style.display = 'block';
+            setTimeout(()=>t.style.display='none', 2000);
         }
     </script>
 </body>
