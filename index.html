@@ -3,432 +3,475 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>云端问卷投票系统</title>
-    <!-- 引入 LeanCloud SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.15.0/dist/av-min.js"></script>
+    <title>互动投票</title>
+    <!-- 引入 Supabase/MemFire SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <style>
-        :root { --primary: #2d5afe; --primary-hover: #1e40cb; --success: #36d399; --danger: #ff6b6b; --bg: #f3f4f6; --card: #ffffff; --text: #333333; --border: #e5e7eb; }
-        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--text); padding-bottom: 40px; }
-        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        :root { 
+            --primary: #07c160; /* 微信风格绿 */
+            --primary-dark: #05a150;
+            --bg: #f5f6f7; 
+            --card: #ffffff; 
+            --text: #1a1a1a; 
+            --tag-bg: #e8fce8;
+            --tag-text: #058a42;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--text); padding-bottom: 60px; }
+        .container { max-width: 800px; margin: 0 auto; padding: 15px; }
         
-        /* 组件样式 */
-        .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; font-weight: 500; color: white; transition: 0.2s; }
-        .btn-primary { background: var(--primary); }
-        .btn-success { background: var(--success); }
-        .btn-danger { background: var(--danger); }
-        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-        .input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 10px; }
+        /* === 基础组件 === */
+        .btn { padding: 12px 20px; border-radius: 8px; border: none; font-size: 16px; font-weight: 600; color: white; width: 100%; cursor: pointer; transition: 0.2s; }
+        .btn-primary { background: var(--primary); box-shadow: 0 4px 12px rgba(7, 193, 96, 0.2); }
+        .btn-primary:active { background: var(--primary-dark); transform: scale(0.98); }
+        .btn-outline { background: white; border: 1px solid #ddd; color: #666; width: auto; font-size: 14px; padding: 6px 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; outline: none; }
+        .input:focus { border-color: var(--primary); }
         
-        /* 布局细节 */
-        .header { display: flex; justify-content: space-between; align-items: center; background: var(--card); padding: 15px; border-radius: 10px; margin-bottom: 20px; }
-        .question-card { background: var(--card); padding: 20px; border-radius: 10px; margin-bottom: 20px; position: relative; }
-        .admin-panel { background: #e0e7ff; padding: 15px; border-radius: 10px; margin-bottom: 20px; display: none; }
-        .options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 15px 0; }
-        .opt-btn { background: #f8f9fa; border: 1px solid var(--border); padding: 12px; border-radius: 8px; cursor: pointer; text-align: center; transition: 0.2s; }
-        .opt-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
+        /* === 卡片与布局 === */
+        .card { background: var(--card); padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); position: relative; }
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         
-        /* 结果条 */
-        .result-row { margin-top: 8px; font-size: 13px; }
-        .progress-bg { background: #eee; height: 6px; border-radius: 3px; margin-top: 4px; overflow: hidden; }
-        .progress-bar { background: var(--primary); height: 100%; width: 0; transition: width 0.5s; }
+        /* === 用户选项样式 (重点优化) === */
+        .opt-grid { display: flex; flex-direction: column; gap: 12px; margin: 20px 0; }
+        .opt-btn { 
+            background: #f8f9fa; border: 2px solid transparent; padding: 15px; border-radius: 10px; 
+            text-align: left; font-size: 16px; color: #333; position: relative; transition: all 0.2s;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        /* 选中状态 */
+        .opt-btn.selected { 
+            background: #f0fdf4; border-color: var(--primary); color: var(--primary-dark); font-weight: bold; 
+            box-shadow: 0 0 0 2px rgba(7, 193, 96, 0.1);
+        }
+        /* 选中时的对勾图标 */
+        .opt-btn.selected::after {
+            content: "✓"; font-weight: 900; font-size: 18px; color: var(--primary);
+        }
 
-        /* 模态框 */
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
-        .modal-content { background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
-        #loading-mask { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); z-index:2000; display:flex; justify-content:center; align-items:center; font-weight:bold; color: var(--primary); }
-        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; display: none; z-index: 2000; }
+        /* === 管理员结果样式 (重点优化) === */
+        .admin-result-box { margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; }
+        .result-item { margin-bottom: 20px; }
+        .result-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 14px; font-weight: bold; color: #444; }
+        .progress-bg { background: #eee; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+        .progress-bar { background: var(--primary); height: 100%; width: 0; transition: width 0.5s; }
+        
+        /* 名字墙样式 */
+        .voter-wall { display: flex; flex-wrap: wrap; gap: 6px; }
+        .voter-tag { 
+            background: #f0f2f5; color: #555; font-size: 12px; padding: 4px 10px; 
+            border-radius: 15px; border: 1px solid #e1e4e8;
+        }
+
+        /* === 模态框 === */
+        .modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; justify-content:center; align-items:center; z-index:1000; backdrop-filter: blur(2px); }
+        .modal-box { background:white; width:85%; max-width:400px; padding:25px; border-radius: 16px; animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* Toast & Loading */
+        #loading { position:fixed; top:0; left:0; width:100%; height:100%; background:white; z-index:2000; display:flex; justify-content:center; align-items:center; flex-direction:column; color: var(--primary); }
+        .toast { position:fixed; bottom:40px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:10px 24px; border-radius: 30px; font-size: 14px; display:none; z-index:3000; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
     </style>
 </head>
 <body>
 
-    <!-- 加载遮罩 -->
-    <div id="loading-mask">系统连接中...</div>
+    <!-- 全局加载遮罩 -->
+    <div id="loading">
+        <div style="font-size:18px; font-weight:bold; margin-bottom:10px;">系统加载中...</div>
+        <div style="font-size:12px; color:#999;">正在连接国内服务器</div>
+    </div>
 
-    <!-- 登录页 -->
-    <div id="login-page" class="modal" style="display: flex; background: white;">
-        <div style="text-align: center; width: 100%; max-width: 300px;">
-            <h2 style="color: var(--primary); margin-bottom: 20px;">在线投票系统</h2>
-            <input type="text" id="login-name" class="input" placeholder="输入您的姓名 (2-15字)" maxlength="15">
-            <button onclick="handleLogin()" class="btn btn-primary" style="width: 100%;">进入系统</button>
+    <!-- 1. 登录弹窗 (强制) -->
+    <div id="login-modal" class="modal" style="display:flex; background:white; z-index:1500;">
+        <div style="text-align:center; width:80%; max-width:320px;">
+            <h2 style="color:var(--primary); margin-bottom:10px;">👋 欢迎加入投票</h2>
+            <p style="color:#666; font-size:13px; margin-bottom:20px;">请输入您的姓名以便大家认识你</p>
+            <input type="text" id="username" class="input" placeholder="你的姓名" style="text-align:center; margin-bottom:15px;">
+            <button onclick="handleLogin()" class="btn btn-primary">开始使用</button>
         </div>
     </div>
 
-    <!-- 主界面 -->
-    <div class="container" id="main-app" style="display: none;">
-        <div class="header">
-            <div>
-                <span id="user-display" style="font-weight: bold;"></span>
-                <span id="role-badge" style="font-size: 12px; background: #eee; padding: 2px 6px; border-radius: 4px; margin-left: 5px;">User</span>
-            </div>
-            <button onclick="showAuthModal()" class="btn btn-outline" style="font-size: 12px;">权限</button>
-        </div>
-
-        <div id="admin-panel" class="admin-panel">
-            <h4 style="margin-bottom: 10px;">管理员控制台 <span id="sync-status" style="font-size:12px; font-weight:normal; color:#666;">(数据自动同步)</span></h4>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="openQuestionModal()" class="btn btn-primary">新增题目</button>
-                <button onclick="syncData(true)" class="btn btn-success">手动刷新数据</button>
-                <button onclick="generateCloudLink()" class="btn btn-primary" style="background: #7c3aed;">复制问卷链接</button>
-                <div id="link-area" style="width: 100%; display:none; margin-top:5px;">
-                    <input type="text" id="share-url" class="input" readonly style="font-size:12px;">
-                    <small style="color:green">请将此链接发给用户，他们才能看到这些题目。</small>
+    <!-- 2. 主界面 -->
+    <div class="container" id="app" style="display:none;">
+        <!-- 顶部信息 -->
+        <div class="header-bar">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <div style="width:36px; height:36px; background:var(--primary); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;" id="avatar">U</div>
+                <div>
+                    <div id="u-name" style="font-weight:bold; font-size:15px; line-height:1.2;">用户</div>
+                    <div id="role-tag" style="font-size:11px; color:#888;">普通成员</div>
                 </div>
             </div>
+            <button onclick="showAuth()" class="btn btn-outline">管理/投屏</button>
         </div>
 
-        <div id="questions-container"></div>
+        <!-- 管理员面板 -->
+        <div id="admin-box" class="card" style="background:#ebf8f2; border:1px solid #d1e7dd; display:none;">
+            <h4 style="margin-bottom:15px; color:#0f5132;">🛠 管理员控制台</h4>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                <button onclick="openAddModal()" class="btn btn-primary" style="font-size:14px;">+ 新增题目</button>
+                <button onclick="copyLink()" class="btn btn-primary" style="font-size:14px; background:#7c3aed;">🔗 复制链接</button>
+                <button onclick="syncData(true)" class="btn btn-outline" style="background:white;">🔄 刷新数据</button>
+                <button onclick="clearVotes()" class="btn btn-outline" style="background:white; color:#dc3545; border-color:#dc3545;">🗑 清空本题投票</button>
+            </div>
+            <div style="margin-top:10px; font-size:12px; color:#666; text-align:center;">
+                当前房间ID: <span id="current-id" style="font-family:monospace; background:white; padding:2px 5px; border-radius:4px;">-</span>
+            </div>
+        </div>
+
+        <!-- 题目列表区域 -->
+        <div id="quiz-list"></div>
     </div>
 
-    <!-- 题目编辑弹窗 -->
-    <div id="question-modal" class="modal">
-        <div class="modal-content">
-            <h3>编辑题目</h3><br>
-            <input type="hidden" id="edit-id">
-            <input type="text" id="q-title" class="input" placeholder="题目标题">
-            <div id="opt-container"></div>
-            <button onclick="addOptInput()" class="btn btn-outline" style="width:100%; margin-bottom:15px;">+ 添加选项</button>
-            <div style="text-align: right; gap: 10px; display: flex; justify-content: flex-end;">
-                <button onclick="closeModal('question-modal')" class="btn btn-outline">取消</button>
-                <button onclick="saveQuestionToCloud()" class="btn btn-primary">保存到云端</button>
+    <!-- 3. 添加题目弹窗 -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-box">
+            <h3 style="margin-bottom:15px;">发布新投票</h3>
+            <label style="font-size:12px; color:#666;">题目内容</label>
+            <input id="q-title" class="input" placeholder="例如：今晚聚餐吃什么？" style="margin-bottom:15px;">
+            
+            <label style="font-size:12px; color:#666;">选项 (自动过滤空行)</label>
+            <div id="q-opts" style="max-height:200px; overflow-y:auto; margin-bottom:10px;"></div>
+            <button onclick="addOptLine()" class="btn btn-outline" style="width:100%; border-style:dashed;">+ 添加选项</button>
+            
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button onclick="closeModal('edit-modal')" class="btn btn-outline" style="flex:1">取消</button>
+                <button onclick="saveToCloud()" class="btn btn-primary" style="flex:1">发布</button>
             </div>
         </div>
     </div>
 
-    <!-- 权限弹窗 -->
+    <!-- 4. 权限验证弹窗 -->
     <div id="auth-modal" class="modal">
-        <div class="modal-content" style="max-width: 300px;">
-            <h3>管理员登录</h3><br>
-            <input type="password" id="auth-pwd" class="input" placeholder="密码 (admin123)">
-            <div style="text-align: right;">
-                <button onclick="closeModal('auth-modal')" class="btn btn-outline">取消</button>
-                <button onclick="handleAuth()" class="btn btn-primary">确认</button>
-            </div>
+        <div class="modal-box" style="text-align:center;">
+            <h3 style="margin-bottom:15px;">切换身份</h3>
+            <input type="password" id="pwd" class="input" placeholder="输入密码 (admin123)" style="margin-bottom:15px; text-align:center;">
+            <button onclick="checkAuth()" class="btn btn-primary">确认登录</button>
+            <button onclick="closeModal('auth-modal')" class="btn btn-outline" style="margin-top:10px; border:none;">取消</button>
         </div>
     </div>
 
     <div id="toast" class="toast"></div>
 
     <script>
-        // ================= 配置区域 (请修改这里) =================
-        const APP_ID = 'KAyiDICFvpWjSCXaTpVvqVFs-MdYXbMMI'; 
-        const APP_KEY = 'Ctugi8vi6ryC3NHKv3hjUPXf';
-        const API_SERVER = 'https://kayidicf.api.lncldglobal.com';
-        // ======================================================
+        // ==========================================
+        // 【配置区】请务必修改这里
+        // ==========================================
+        const MEMFIRE_URL = 'https://d4g6fdgg91htqli3u7sg.baseapi.memfiredb.com';
+        const MEMFIRE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImV4cCI6MzM0MDUzMTM4MiwiaWF0IjoxNzYzNzMxMzgyLCJpc3MiOiJzdXBhYmFzZSJ9.fsVIuQNlARfMnBzz3GkhfnQa6nAemjRiMta_nPvNqro';
+        // ==========================================
 
+        const { createClient } = supabase;
+        let db = null;
+        
         let state = {
-            user: '',
-            role: 'user',
-            quizId: null, // 云端数据库的 Object ID
-            questions: [], // 题目数据
-            votes: {}, // 投票数据
-            tempSelections: {}
+            user: localStorage.getItem('wx_vote_user_v2') || '',
+            role: 'user', // user, admin
+            pageId: new URLSearchParams(location.search).get('id'),
+            data: { questions: [], votes: {} },
+            temp: {} 
         };
 
-        // 初始化 LeanCloud
-        function initDB() {
-            if(APP_ID.includes('这里填入')) {
-                alert('请编辑代码，填入 LeanCloud 的 AppID 和 AppKey！');
+        // 系统初始化
+        window.onload = async function() {
+            if(MEMFIRE_URL.includes('这里填')) {
+                alert('请先在代码中填入 MemFire 数据库配置！');
                 return;
             }
-            AV.init({ appId: APP_ID, appKey: APP_KEY, serverURLs: API_SERVER });
-            checkUrlForQuizId();
-        }
-
-        window.onload = function() {
-            initDB();
-            const savedUser = localStorage.getItem('vote_user');
-            if(savedUser) {
-                state.user = savedUser;
-                document.getElementById('login-page').style.display = 'none';
-                document.getElementById('main-app').style.display = 'block';
-                document.getElementById('user-display').textContent = state.user;
-                loadCloudData(); // 登录后加载数据
+            
+            db = createClient(MEMFIRE_URL, MEMFIRE_KEY);
+            
+            if(state.user) {
+                document.getElementById('login-modal').style.display = 'none';
+                initApp();
             } else {
-                document.getElementById('loading-mask').style.display = 'none';
+                document.getElementById('loading').style.display = 'none';
             }
         };
 
-        // --- 云端数据核心逻辑 ---
-
-        // 1. 解析 URL 获取 QuizID
-        function checkUrlForQuizId() {
-            const params = new URLSearchParams(window.location.search);
-            state.quizId = params.get('id');
-        }
-
-        // 2. 从云端拉取数据 (读)
-        async function loadCloudData() {
-            document.getElementById('loading-mask').style.display = 'flex';
-            try {
-                if (!state.quizId) {
-                    // 如果没有 ID，说明是新建模式，不做任何事，等待管理员操作
-                    document.getElementById('loading-mask').style.display = 'none';
-                    if(state.role === 'user') {
-                        document.getElementById('questions-container').innerHTML = 
-                            '<div style="text-align:center;padding:50px;color:#888">无效的问卷链接，请联系发布者。</div>';
-                    }
-                    return;
-                }
-
-                const query = new AV.Query('QuizTable');
-                const record = await query.get(state.quizId);
-                
-                if (record) {
-                    state.questions = record.get('questions') || [];
-                    state.votes = record.get('votes') || {};
-                    renderUI();
-                }
-            } catch (error) {
-                console.error(error);
-                showToast('数据加载失败: ' + error.message);
-            } finally {
-                document.getElementById('loading-mask').style.display = 'none';
-            }
-        }
-
-        // 3. 保存题目到云端 (写)
-        async function saveToCloud(showMsg = true) {
-            document.getElementById('loading-mask').style.display = 'flex';
-            try {
-                // 创建或更新
-                const QuizTable = AV.Object.extend('QuizTable');
-                let quiz;
-                
-                if (state.quizId) {
-                    quiz = AV.Object.createWithoutData('QuizTable', state.quizId);
-                } else {
-                    quiz = new QuizTable();
-                }
-
-                quiz.set('questions', state.questions);
-                // 注意：这里不覆盖 votes，以免误删投票。投票通过单独逻辑更新
-                // 但如果是新建问卷，可以初始化
-                if(!state.quizId) quiz.set('votes', {}); 
-                
-                const saved = await quiz.save();
-                state.quizId = saved.id; // 拿到 ID
-                
-                // 更新 URL
-                const newUrl = `${window.location.pathname}?id=${state.quizId}`;
-                window.history.replaceState({}, '', newUrl);
-                
-                if(showMsg) showToast('云端保存成功！');
-                renderUI();
-            } catch (error) {
-                alert('保存失败: ' + error.message);
-            } finally {
-                document.getElementById('loading-mask').style.display = 'none';
-            }
-        }
-
-        // 4. 提交投票到云端 (并发安全写)
-        async function submitVoteToCloud(qid, selections) {
-            document.getElementById('loading-mask').style.display = 'flex';
-            try {
-                // 使用 LeanCloud 原子操作或简单的拉取-修改-保存模式
-                // 为了简单起见，这里使用 拉取最新 -> 修改 -> 保存 的模式
-                // ⚠️ 注意：高并发下可能会有冲突，完美方案需要云函数，但纯前端使用此方案足矣
-                const quiz = await new AV.Query('QuizTable').get(state.quizId);
-                let currentVotes = quiz.get('votes') || {};
-                
-                if(!currentVotes[qid]) currentVotes[qid] = {};
-
-                selections.forEach(opt => {
-                    if(!currentVotes[qid][opt]) currentVotes[qid][opt] = [];
-                    if(!currentVotes[qid][opt].includes(state.user)) {
-                        currentVotes[qid][opt].push(state.user);
-                    }
-                });
-
-                quiz.set('votes', currentVotes);
-                await quiz.save();
-                
-                state.votes = currentVotes; // 更新本地视图
-                showToast('投票成功！');
-                delete state.tempSelections[qid];
-                renderUI();
-
-            } catch (error) {
-                alert('投票失败，请重试: ' + error.message);
-                loadCloudData(); // 失败后刷新数据
-            } finally {
-                document.getElementById('loading-mask').style.display = 'none';
-            }
-        }
-
-        // --- 业务逻辑 ---
-
+        // 登录逻辑
         function handleLogin() {
-            const name = document.getElementById('login-name').value.trim();
-            if(name.length < 2) return alert('请输入名字');
-            localStorage.setItem('vote_user', name);
+            const name = document.getElementById('username').value.trim();
+            if(!name) return showToast('名字不能为空');
             state.user = name;
+            localStorage.setItem('wx_vote_user_v2', name);
             location.reload();
         }
 
-        function handleAuth() {
-            const pwd = document.getElementById('auth-pwd').value;
-            if(pwd === 'admin123') {
-                state.role = 'admin';
-                document.getElementById('admin-panel').style.display = 'block';
-                document.getElementById('role-badge').textContent = 'Admin';
-                document.getElementById('role-badge').style.background = '#ff6b6b';
-                document.getElementById('role-badge').style.color = 'white';
-                closeModal('auth-modal');
-                showToast('管理员模式');
-                renderUI(); // 显示编辑按钮
+        // 应用启动
+        async function initApp() {
+            document.getElementById('app').style.display = 'block';
+            document.getElementById('u-name').textContent = state.user;
+            document.getElementById('avatar').textContent = state.user.substring(0,1).toUpperCase();
+            
+            if(!state.pageId) {
+                // 如果没有ID，说明是首页
+                document.getElementById('loading').style.display = 'none';
+                if(state.role === 'user') {
+                    document.getElementById('quiz-list').innerHTML = `
+                        <div style="text-align:center; padding:60px 20px; color:#999;">
+                            <div style="font-size:40px; margin-bottom:10px;">📭</div>
+                            <p>还没有题目哦</p>
+                            <p style="font-size:12px;">请联系管理员分享新的链接</p>
+                        </div>`;
+                }
             } else {
-                alert('密码错误');
+                // 拉取数据
+                await loadData();
             }
         }
 
-        function renderUI() {
-            const container = document.getElementById('questions-container');
-            container.innerHTML = '';
+        // --- 数据库操作 ---
 
-            state.questions.forEach(q => {
-                // 获取当前用户是否投过票
+        async function loadData() {
+            document.getElementById('loading').style.display = 'flex';
+            try {
+                const { data, error } = await db.from('quizzes').select('*').eq('id', state.pageId).single();
+                
+                if(data) {
+                    state.data.questions = data.content || [];
+                    state.data.votes = data.votes || {};
+                    document.getElementById('current-id').textContent = state.pageId;
+                }
+                render();
+            } catch(e) {
+                console.error(e);
+                showToast('数据加载异常');
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        async function saveToCloud(refresh = true) {
+            const title = document.getElementById('q-title').value.trim();
+            // 获取选项并去重去空
+            const optInputs = document.querySelectorAll('.opt-input');
+            const opts = Array.from(optInputs).map(i => i.value.trim()).filter(v=>v);
+            
+            if(!state.pageId) state.pageId = Date.now().toString(); // 新建ID
+
+            if(refresh) {
+                if(!title || opts.length < 2) return alert('请填写标题并至少添加2个选项');
+                const newQ = { id: Date.now().toString(), title, options: opts };
+                state.data.questions.unshift(newQ); // 新题插到最前
+            }
+
+            document.getElementById('loading').style.display = 'flex';
+            
+            const payload = {
+                id: state.pageId,
+                title: '问卷 ' + state.pageId,
+                content: state.data.questions,
+                votes: state.data.votes
+            };
+
+            const { error } = await db.from('quizzes').upsert(payload);
+            
+            document.getElementById('loading').style.display = 'none';
+            if(error) {
+                alert('保存失败: ' + error.message);
+            } else {
+                if(refresh) {
+                    const newUrl = location.pathname + '?id=' + state.pageId;
+                    history.replaceState({}, '', newUrl);
+                    closeModal('edit-modal');
+                    render();
+                    showToast('发布成功！');
+                }
+            }
+        }
+
+        async function submitVote(qid) {
+            const sels = state.temp[qid];
+            if(!sels || sels.length === 0) return showToast('请至少选择一个选项');
+
+            document.getElementById('loading').style.display = 'flex';
+
+            // 1. 拉取最新防止冲突
+            const { data: latest } = await db.from('quizzes').select('votes').eq('id', state.pageId).single();
+            let cloudVotes = latest?.votes || state.data.votes || {};
+
+            if(!cloudVotes[qid]) cloudVotes[qid] = {};
+            
+            // 2. 写入投票
+            sels.forEach(opt => {
+                if(!cloudVotes[qid][opt]) cloudVotes[qid][opt] = [];
+                // 简单的去重：如果已经在里面了就不加了（或者先剔除再加，这里采用追加前检查）
+                if(!cloudVotes[qid][opt].includes(state.user)) {
+                    cloudVotes[qid][opt].push(state.user);
+                }
+            });
+
+            // 3. 更新
+            const { error } = await db.from('quizzes').update({ votes: cloudVotes }).eq('id', state.pageId);
+
+            document.getElementById('loading').style.display = 'none';
+            if(error) {
+                alert('投票失败，请重试');
+            } else {
+                state.data.votes = cloudVotes;
+                delete state.temp[qid];
+                showToast('投票成功 🎉');
+                render();
+            }
+        }
+
+        async function clearVotes() {
+            if(!confirm('确定要清空当前页面的所有投票记录吗？(题目保留)')) return;
+            state.data.votes = {};
+            await saveToCloud(false); // false表示不新增题目，只存状态
+            render();
+            showToast('投票记录已清空');
+        }
+
+        // --- 核心渲染逻辑 ---
+
+        function render() {
+            const container = document.getElementById('quiz-list');
+            container.innerHTML = '';
+            
+            if(state.data.questions.length === 0) return;
+
+            state.data.questions.forEach(q => {
                 const myVotes = getMyVotes(q.id);
                 const hasVoted = myVotes.length > 0;
+                const isAdmin = state.role === 'admin';
 
-                // 构建选项 HTML
-                let optsHtml = '<div class="options-grid">';
+                // 1. 选项渲染
+                let optsHtml = '<div class="opt-grid">';
                 q.options.forEach(opt => {
-                    const isSelected = state.tempSelections[q.id]?.includes(opt) || myVotes.includes(opt);
-                    optsHtml += `<div class="opt-btn ${isSelected ? 'selected' : ''}" 
-                        onclick="toggleSelect('${q.id}', '${opt}', ${hasVoted})">${opt}</div>`;
+                    // 判断选中状态：如果是临时选择 OR 已经投过的
+                    const isSelected = state.temp[q.id]?.includes(opt) || myVotes.includes(opt);
+                    // 如果已投过，禁止点击
+                    const clickAction = hasVoted ? '' : `onclick="toggleOpt('${q.id}', '${opt}')"`;
+                    
+                    optsHtml += `
+                        <div class="opt-btn ${isSelected ? 'selected' : ''}" ${clickAction}>
+                            <span>${opt}</span>
+                        </div>`;
                 });
                 optsHtml += '</div>';
 
-                // 结果条 (投票后或管理员可见)
-                let resultHtml = '';
-                if(hasVoted || state.role === 'admin') {
-                    resultHtml = '<div style="margin-top:15px; padding-top:10px; border-top:1px dashed #eee;">';
-                    const qVotes = state.votes[q.id] || {};
-                    // 计算总票数用来算百分比
-                    let total = 0;
-                    q.options.forEach(o => total += (qVotes[o]?.length || 0));
+                // 2. 按钮区域
+                let btnHtml = '';
+                if(!hasVoted) {
+                    btnHtml = `<button onclick="submitVote('${q.id}')" class="btn btn-primary">确认提交</button>`;
+                } else {
+                    btnHtml = `<button class="btn btn-primary" disabled style="background:#bbf7d0; color:#166534; cursor:default;">已完成投票</button>`;
+                }
 
+                // 3. 结果展示 (Admin/Presenter 专属视图)
+                let resultHtml = '';
+                if(isAdmin) {
+                    const qVotes = state.data.votes[q.id] || {};
+                    // 计算总票数
+                    let totalVotes = 0;
+                    Object.values(qVotes).forEach(arr => totalVotes += arr.length);
+
+                    resultHtml += `<div class="admin-result-box">`;
                     q.options.forEach(opt => {
                         const voters = qVotes[opt] || [];
                         const count = voters.length;
-                        const pct = total > 0 ? Math.round(count/total * 100) : 0;
+                        const pct = totalVotes ? Math.round((count/totalVotes)*100) : 0;
+                        
+                        // 生成名字标签
+                        let namesHtml = voters.map(name => `<span class="voter-tag">${name}</span>`).join('');
+                        if(!namesHtml) namesHtml = '<span style="font-size:12px; color:#ccc;">暂无</span>';
+
                         resultHtml += `
-                            <div class="result-row">
-                                <div style="display:flex; justify-content:space-between;">
+                            <div class="result-item">
+                                <div class="result-header">
                                     <span>${opt}</span>
-                                    <span>${count}票 (${voters.join(', ')})</span>
+                                    <span>${count} 票 (${pct}%)</span>
                                 </div>
                                 <div class="progress-bg"><div class="progress-bar" style="width:${pct}%"></div></div>
+                                <div class="voter-wall">${namesHtml}</div>
                             </div>
                         `;
                     });
-                    resultHtml += '</div>';
+                    resultHtml += `</div>`;
+                    
+                    // 管理员删除按钮
+                    btnHtml = `<div style="display:flex; justify-content:flex-end; margin-top:-10px; margin-bottom:10px;">
+                                <button onclick="deleteQ('${q.id}')" style="font-size:12px; color:#ff4d4f; background:none; border:none;">❌ 删除此题</button>
+                               </div>` + resultHtml; 
                 }
 
-                // 按钮
-                const btn = !hasVoted 
-                    ? `<button onclick="submitVote('${q.id}')" class="btn btn-primary" style="width:100%">提交投票</button>`
-                    : `<button class="btn btn-success" disabled style="width:100%">已投票</button>`;
-
-                // 删除按钮
-                const delBtn = state.role === 'admin' 
-                    ? `<button onclick="deleteQuestion('${q.id}')" style="position:absolute; top:15px; right:15px; font-size:12px;" class="btn btn-danger">删除</button>` 
-                    : '';
-
-                const html = `
-                    <div class="question-card">
-                        ${delBtn}
-                        <h3>${q.title} <span style="font-size:12px; color:#888; font-weight:normal">(可多选)</span></h3>
-                        ${optsHtml}
-                        ${btn}
-                        ${resultHtml}
-                    </div>
+                // 组装卡片
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <h3 style="font-size:18px; margin-bottom:5px;">${q.title}</h3>
+                    <div style="font-size:12px; color:#999; margin-bottom:10px;">多选模式</div>
+                    ${optsHtml}
+                    ${btnHtml}
                 `;
-                container.appendChild(document.createRange().createContextualFragment(html));
+                container.appendChild(card);
             });
         }
 
-        function toggleSelect(qid, opt, locked) {
-            if(locked) return;
-            if(!state.tempSelections[qid]) state.tempSelections[qid] = [];
-            const idx = state.tempSelections[qid].indexOf(opt);
-            if(idx > -1) state.tempSelections[qid].splice(idx, 1);
-            else state.tempSelections[qid].push(opt);
-            renderUI();
-        }
+        // --- 交互 ---
 
-        function submitVote(qid) {
-            const sels = state.tempSelections[qid];
-            if(!sels || sels.length === 0) return alert('请至少选一项');
-            submitVoteToCloud(qid, sels);
+        function toggleOpt(qid, opt) {
+            if(!state.temp[qid]) state.temp[qid] = [];
+            const idx = state.temp[qid].indexOf(opt);
+            if(idx > -1) state.temp[qid].splice(idx, 1); // 取消
+            else state.temp[qid].push(opt); // 选中
+            render(); // 触发重绘，显示选中状态
         }
 
         function getMyVotes(qid) {
-            const qVotes = state.votes[qid];
-            if(!qVotes) return [];
-            return Object.keys(qVotes).filter(opt => qVotes[opt].includes(state.user));
+            const v = state.data.votes[qid];
+            if(!v) return [];
+            return Object.keys(v).filter(k => v[k].includes(state.user));
         }
 
-        // --- 管理逻辑 ---
-        
-        function openQuestionModal() {
+        // --- 管理功能 ---
+
+        function showAuth() { document.getElementById('auth-modal').style.display = 'flex'; }
+        function checkAuth() {
+            if(document.getElementById('pwd').value === 'admin123' || document.getElementById('pwd').value === 'presenter123') {
+                state.role = 'admin';
+                document.getElementById('role-tag').textContent = '管理员/演示者';
+                document.getElementById('admin-box').style.display = 'block';
+                closeModal('auth-modal');
+                render();
+                showToast('已进入管理模式');
+            } else { showToast('密码错误'); }
+        }
+
+        function openAddModal() {
             document.getElementById('q-title').value = '';
-            document.getElementById('opt-container').innerHTML = '';
-            addOptInput(); addOptInput();
-            document.getElementById('question-modal').style.display = 'flex';
+            document.getElementById('q-opts').innerHTML = '';
+            addOptLine(); addOptLine();
+            document.getElementById('edit-modal').style.display = 'flex';
         }
-
-        function addOptInput() {
+        function addOptLine() {
             const div = document.createElement('div');
-            div.style.marginBottom = '5px';
-            div.innerHTML = `<input type="text" class="input opt-input" placeholder="选项">`;
-            document.getElementById('opt-container').appendChild(div);
+            div.innerHTML = `<input class="input opt-input" style="margin-bottom:8px; padding:10px;" placeholder="选项内容">`;
+            document.getElementById('q-opts').appendChild(div);
         }
 
-        function saveQuestionToCloud() {
-            const title = document.getElementById('q-title').value;
-            const opts = Array.from(document.querySelectorAll('.opt-input')).map(i => i.value.trim()).filter(v=>v);
-            if(!title || opts.length < 2) return alert('请完善题目信息');
-
-            state.questions.push({
-                id: Date.now().toString(),
-                title: title,
-                options: opts
-            });
-
-            saveToCloud(); // 保存整个题目数组到云端
-            closeModal('question-modal');
+        async function deleteQ(qid) {
+            if(!confirm('确定删除此题？')) return;
+            state.data.questions = state.data.questions.filter(q => q.id !== qid);
+            delete state.data.votes[qid]; // 清理数据
+            await saveToCloud(false);
+            render();
         }
 
-        function deleteQuestion(qid) {
-            if(!confirm('确定删除？所有人的投票也会消失。')) return;
-            state.questions = state.questions.filter(q => q.id !== qid);
-            // 清理该题目的投票数据
-            if(state.votes[qid]) delete state.votes[qid];
-            saveToCloud();
+        function syncData(manual) { loadData(); if(manual) showToast('已同步最新结果'); }
+        
+        function copyLink() {
+            if(!state.pageId) return showToast('请先发布题目');
+            const url = location.href;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(() => showToast('链接已复制，发给微信好友吧'));
+            } else {
+                prompt("请复制链接：", url);
+            }
         }
 
-        function generateCloudLink() {
-            if(!state.quizId) return alert('请先添加题目并保存，系统会自动生成ID');
-            // 链接就是当前 URL (已经包含了 ?id=xxx)
-            const url = window.location.href;
-            const input = document.getElementById('share-url');
-            document.getElementById('link-area').style.display = 'block';
-            input.value = url;
-            input.select();
-            document.execCommand('copy');
-            showToast('链接已复制！');
-        }
-
-        function syncData(manual) {
-            loadCloudData();
-            if(manual) showToast('已同步最新数据');
-        }
-
-        // 工具
-        function showAuthModal() { document.getElementById('auth-modal').style.display = 'flex'; }
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
         function showToast(msg) {
             const t = document.getElementById('toast');
