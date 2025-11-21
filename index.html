@@ -4,20 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>互动投票</title>
+    <!-- 引入 Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <!-- 引入 二维码生成库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         /* === 样式表 === */
         :root {
             --primary: #263238; 
             --bg: #f0f2f5;
-            --card-bg: #ffffff;
             --c1: #29b6f6; --c2: #ef5350; --c3: #ffa726; --c4: #66bb6a; --c5: #ab47bc;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--primary); padding-bottom: 80px; }
         
-        /* 导航栏 (专注模式下会隐藏) */
+        /* 导航栏 */
         .navbar { background: #fff; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.05); position: sticky; top: 0; z-index: 100; }
         .brand { font-weight: 900; font-size: 20px; }
 
@@ -51,13 +53,11 @@
         .opt-btn { background: #f7f7f7; padding: 15px; margin-bottom: 10px; border-radius: 10px; font-weight: 600; border: 2px solid transparent; cursor: pointer; }
         .opt-btn.selected { background: #e3f2fd; border-color: #2196f3; color: #1565c0; }
 
-        /* 专注模式特有样式：隐藏多余元素，让图表居中变大 */
+        /* 专注模式样式 */
         body.focus-mode .navbar { display: none; }
         body.focus-mode .container { padding: 0; max-width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; }
         body.focus-mode #admin-box { display: none !important; } 
-        body.focus-mode .user-card { display: none; } /* 专注模式不显示投票卡，只显示结果 */
-        
-        /* 专注模式下的看板容器调整，使其更适合大屏 */
+        body.focus-mode .user-card { display: none; }
         body.focus-mode .board-container { justify-content: center; padding: 20px; height: 100%; align-items: center; }
         body.focus-mode .board-col { min-width: 200px; height: 80%; overflow-y: auto; font-size: 1.2em; }
         body.focus-mode .col-title { font-size: 24px; }
@@ -65,9 +65,13 @@
 
         @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; justify-content:center; align-items:center; z-index:1000; backdrop-filter: blur(3px); }
-        .modal-box { background:white; width:90%; max-width:400px; padding:30px; border-radius: 16px; }
+        .modal-box { background:white; width:90%; max-width:400px; padding:30px; border-radius: 16px; position: relative;}
         #loading { position:fixed; top:0; left:0; width:100%; height:100%; background:#f0f2f5; z-index:2000; display:flex; justify-content:center; align-items:center; flex-direction:column; }
         .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#333; color:white; padding:10px 20px; border-radius: 30px; display:none; z-index:3000; }
+        
+        /* 二维码弹窗专用 */
+        #qrcode-box { display: flex; justify-content: center; margin-bottom: 20px; }
+        #qrcode-box img { border: 10px solid white; border-radius: 8px; }
     </style>
 </head>
 <body>
@@ -85,7 +89,7 @@
         </div>
     </div>
 
-    <!-- 顶部导航 (专注模式会自动隐藏) -->
+    <!-- 导航 -->
     <div class="navbar" id="nav-bar">
         <div class="brand">VoteBoard</div>
         <div style="display:flex; gap:10px; align-items:center;">
@@ -102,7 +106,8 @@
                 <span style="font-weight:bold;">🔴 总控台</span>
                 <div style="display:flex; gap:10px;">
                     <button onclick="openAddModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">+ 新题</button>
-                    <button onclick="copyLink()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">复制用户入口</button>
+                    <!-- 新增二维码按钮 -->
+                    <button onclick="showQRCodeModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📱 二维码</button>
                     <button onclick="clearVotes()" class="btn" style="background:rgba(255,50,50,0.2); color:#ff8a80;">清空</button>
                 </div>
             </div>
@@ -111,7 +116,7 @@
         <div id="quiz-list"></div>
     </div>
 
-    <!-- 弹窗 -->
+    <!-- 各种弹窗 -->
     <div id="edit-modal" class="modal">
         <div class="modal-box">
             <h3>新建投票</h3><br>
@@ -134,6 +139,16 @@
         </div>
     </div>
 
+    <!-- 二维码弹窗 -->
+    <div id="qr-modal" class="modal">
+        <div class="modal-box" style="text-align:center; max-width:350px;">
+            <h3 style="margin-bottom:20px;">扫码参与投票</h3>
+            <div id="qrcode-box"></div>
+            <p style="color:#666; font-size:14px; margin-bottom:20px;">观众扫描上方二维码即可进入</p>
+            <button onclick="closeModal('qr-modal')" class="btn btn-ghost" style="width:100%">关闭</button>
+        </div>
+    </div>
+
     <div id="toast" class="toast"></div>
 
     <script>
@@ -142,16 +157,12 @@
 
         let db = null;
         let realtimeSub = null;
-        
-        // 解析 URL 参数
         const urlParams = new URLSearchParams(location.search);
         
         let state = {
             user: localStorage.getItem('wx_vote_user_final') || 'Host',
-            // 如果 url 包含 admin=1，自动获得权限
             role: urlParams.get('admin') === '1' ? 'admin' : 'user',
             pageId: urlParams.get('id'),
-            // 如果 url 包含 focus=xxx，则只显示该题
             focusId: urlParams.get('focus'),
             data: { questions: [], votes: {} },
             temp: {} 
@@ -161,11 +172,10 @@
             const { createClient } = supabase;
             db = createClient(MEMFIRE_URL, MEMFIRE_KEY);
             
-            // 专注模式下，强制隐藏登录框，直接进入展示
             if (state.focusId) {
                 document.body.classList.add('focus-mode');
                 document.getElementById('login-modal').style.display = 'none';
-                state.role = 'admin'; // 专注模式默认拥有读数据的权限
+                state.role = 'admin'; 
                 initApp();
             } else if(state.user) {
                 document.getElementById('login-modal').style.display = 'none';
@@ -187,7 +197,6 @@
             document.getElementById('app').style.display = 'block';
             document.getElementById('u-name').textContent = state.user;
             
-            // 如果是 Admin 且不是专注模式，显示控制台
             if(state.role === 'admin' && !state.focusId) {
                 document.getElementById('admin-box').style.display = 'block';
             }
@@ -225,7 +234,6 @@
             const box = document.getElementById('quiz-list');
             let html = '';
 
-            // 过滤：如果处于 focus 模式，只渲染 ID 匹配的题目
             const questionsToRender = state.focusId 
                 ? state.data.questions.filter(q => q.id === state.focusId)
                 : state.data.questions;
@@ -241,96 +249,67 @@
                 const isFocus = !!state.focusId;
 
                 if(!isAdmin) {
-                    // === 普通用户手机端视图 ===
                     const myVotes = getMyVotes(q.id);
                     let opts = '';
-                    
                     q.options.forEach(opt => {
                         const isSel = state.temp[q.id] ? state.temp[q.id].includes(opt) : myVotes.includes(opt);
                         const action = `onclick="toggle('${q.id}','${opt}')"`;
                         opts += `<div class="opt-btn ${isSel?'selected':''}" ${action}>${opt}</div>`;
                     });
-
                     const hasVoted = myVotes.length > 0;
                     const btnText = hasVoted ? '更新选择' : '提交';
                     const btnClass = hasVoted ? 'btn-outline' : 'btn-primary';
-                    
-                    html += `<div class="user-card">
-                        <h2 style="margin-bottom:15px;">${q.title}</h2>
-                        <div style="display:flex;flex-direction:column;gap:5px;">${opts}</div>
-                        <button class="btn ${btnClass}" onclick="submitVote('${q.id}')" style="width:100%;margin-top:20px;">${btnText}</button>
-                    </div>`;
+                    html += `<div class="user-card"><h2 style="margin-bottom:15px;">${q.title}</h2><div style="display:flex;flex-direction:column;gap:5px;">${opts}</div><button class="btn ${btnClass}" onclick="submitVote('${q.id}')" style="width:100%;margin-top:20px;">${btnText}</button></div>`;
                 } 
                 else {
-                    // === 管理员/投屏视图 ===
                     let columnsHtml = '';
-                    
                     q.options.forEach(opt => {
                         const voters = qVotes[opt] || []; 
                         const count = voters.length;
                         let namesHtml = voters.map(n => `<div class="name-card">${n}</div>`).join('');
-
-                        columnsHtml += `
-                            <div class="board-col">
-                                <div class="col-header">
-                                    <div class="col-title">${opt}</div>
-                                    <div class="col-count">${count}</div>
-                                </div>
-                                <div class="voter-list">
-                                    ${namesHtml}
-                                </div>
-                            </div>
-                        `;
+                        columnsHtml += `<div class="board-col"><div class="col-header"><div class="col-title">${opt}</div><div class="col-count">${count}</div></div><div class="voter-list">${namesHtml}</div></div>`;
                     });
-
-                    // 只有在非 Focus 模式下才显示“删除”和“复制链接”按钮
-                    // Focus 模式下，我们希望画面纯净
-                    const headerTools = isFocus ? '' : `
-                        <div style="display:flex; gap:10px;">
-                            <button onclick="copyFocusLink('${q.id}')" class="btn btn-sm btn-primary">🔗 复制投屏链接</button>
-                            <button onclick="delQ('${q.id}')" class="btn btn-sm btn-ghost">×</button>
-                        </div>
-                    `;
-
-                    // 标题大小调整
+                    const headerTools = isFocus ? '' : `<div style="display:flex; gap:10px;"><button onclick="copyFocusLink('${q.id}')" class="btn btn-sm btn-primary">🔗 复制投屏链接</button><button onclick="delQ('${q.id}')" class="btn btn-sm btn-ghost">×</button></div>`;
                     const titleStyle = isFocus ? 'font-size:40px; text-align:center;' : 'font-size:24px;';
-
-                    html += `
-                        <div style="margin-bottom:40px; height:100%;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-                                <h1 style="${titleStyle}">${q.title}</h1>
-                                ${headerTools}
-                            </div>
-                            <div class="board-container">
-                                ${columnsHtml}
-                            </div>
-                        </div>
-                    `;
+                    html += `<div style="margin-bottom:40px; height:100%;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h1 style="${titleStyle}">${q.title}</h1>${headerTools}</div><div class="board-container">${columnsHtml}</div></div>`;
                 }
             });
             box.innerHTML = html;
         }
 
-        // --- 逻辑处理 ---
-        function copyFocusLink(qid) {
-            // 生成专门用于 PPT 投屏的链接
-            // 包含：当前页面ID + admin权限(免密) + focus(只看此题)
-            const url = `${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}&admin=1&focus=${qid}`;
-            navigator.clipboard.writeText(url).then(() => {
-                showToast('已复制！请粘贴到 PPT 插件中');
+        // --- 二维码逻辑 ---
+        function showQRCodeModal() {
+            // 获取当前 URL，但去掉 admin 和 focus 参数，生成纯净的用户链接
+            const userUrl = `${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}`;
+            
+            const qrBox = document.getElementById('qrcode-box');
+            qrBox.innerHTML = ''; // 清空旧的
+            document.getElementById('qr-modal').style.display = 'flex';
+            
+            // 生成二维码
+            new QRCode(qrBox, {
+                text: userUrl,
+                width: 200,
+                height: 200,
+                colorDark : "#000000",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
             });
+        }
+
+        function copyFocusLink(qid) {
+            const url = `${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}&admin=1&focus=${qid}`;
+            navigator.clipboard.writeText(url).then(() => { showToast('已复制！请粘贴到 PPT 插件中'); });
         }
 
         async function saveToCloud(refresh = true) {
             const title = document.getElementById('q-title').value.trim();
             const opts = Array.from(document.querySelectorAll('.opt-input')).map(i=>i.value.trim()).filter(v=>v);
-            
             if(!state.pageId) state.pageId = Date.now().toString();
             if(refresh) {
                 if(!title || opts.length < 2) return alert('请完善信息');
                 state.data.questions.push({ id: Date.now().toString(), title, options: opts });
             }
-
             document.getElementById('loading').style.display = 'flex';
             const { error } = await db.from('quizzes').upsert({
                 id: state.pageId, title: 'Vote '+state.pageId, content: state.data.questions, votes: state.data.votes
@@ -350,52 +329,37 @@
                 sels = current;
             }
             if(!sels || !sels.length) return showToast('请选择至少一项');
-
             document.getElementById('loading').style.display = 'flex';
             const { data: latest } = await db.from('quizzes').select('votes').eq('id', state.pageId).single();
             let cloudVotes = latest?.votes || state.data.votes || {};
             if(!cloudVotes[qid]) cloudVotes[qid] = {};
-            
             Object.keys(cloudVotes[qid]).forEach(optKey => {
                 if(Array.isArray(cloudVotes[qid][optKey])) {
                     cloudVotes[qid][optKey] = cloudVotes[qid][optKey].filter(u => u !== state.user);
                 }
             });
-
             sels.forEach(opt => {
                 if(!cloudVotes[qid][opt]) cloudVotes[qid][opt] = [];
                 if(!cloudVotes[qid][opt].includes(state.user)) cloudVotes[qid][opt].push(state.user);
             });
-
             const { error } = await db.from('quizzes').update({ votes: cloudVotes }).eq('id', state.pageId);
             document.getElementById('loading').style.display = 'none';
             if(!error) { delete state.temp[qid]; showToast('提交成功'); }
         }
 
         async function clearVotes() {
-            if(confirm('清空所有结果？')) {
-                state.data.votes = {}; await saveToCloud(false); showToast('已清空');
-            }
+            if(confirm('清空所有结果？')) { state.data.votes = {}; await saveToCloud(false); showToast('已清空'); }
         }
-
         async function delQ(qid) {
-            if(confirm('删除题目？')) {
-                state.data.questions = state.data.questions.filter(q=>q.id!==qid);
-                delete state.data.votes[qid]; await saveToCloud(false);
-            }
+            if(confirm('删除题目？')) { state.data.questions = state.data.questions.filter(q=>q.id!==qid); delete state.data.votes[qid]; await saveToCloud(false); }
         }
-
         function toggle(qid, opt) {
             if(!state.temp[qid]) state.temp[qid] = [...getMyVotes(qid)];
             const i = state.temp[qid].indexOf(opt);
             if(i > -1) state.temp[qid].splice(i, 1); else state.temp[qid].push(opt);
             render();
         }
-
-        function getMyVotes(qid) {
-            const v = state.data.votes[qid];
-            return v ? Object.keys(v).filter(k => v[k] && v[k].includes(state.user)) : [];
-        }
+        function getMyVotes(qid) { const v = state.data.votes[qid]; return v ? Object.keys(v).filter(k => v[k] && v[k].includes(state.user)) : []; }
         function showAuth() { document.getElementById('auth-modal').style.display = 'flex'; }
         function checkAuth() {
             if(document.getElementById('pwd').value === 'admin123') {
@@ -410,10 +374,6 @@
         function addOptLine() {
             const i = document.createElement('input'); i.className = 'input opt-input'; i.style.marginBottom='8px'; i.placeholder='选项';
             document.getElementById('q-opts').appendChild(i);
-        }
-        function copyLink() {
-            const url = `${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}`;
-            navigator.clipboard.writeText(url).then(()=>showToast('用户链接已复制'));
         }
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.style.display='block'; setTimeout(()=>t.style.display='none',2000); }
