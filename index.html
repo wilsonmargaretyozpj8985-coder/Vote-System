@@ -27,6 +27,7 @@
         .btn { padding: 12px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; transition: 0.2s; }
         .btn-primary { background: #222; color: white; }
         .btn-ghost { background: transparent; color: #666; }
+        .btn-outline { background: transparent; border: 2px solid #222; color: #222; } /* 新增样式：修改按钮 */
         .input { width: 100%; padding: 14px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 16px; outline: none; }
 
         /* === 管理员视图：看板/列布局 === */
@@ -240,30 +241,40 @@
                     // === 普通用户视图 (卡片式) ===
                     const myVotes = getMyVotes(q.id);
                     let opts = '';
+                    
+                    // 决定使用临时选择(如果用户正在改)还是已存的投票
+                    // 如果 state.temp[q.id] 有值，说明用户正在交互，UI以temp为准
+                    // 否则以数据库的 myVotes 为准来显示高亮
+                    
                     q.options.forEach(opt => {
-                        const isSel = state.temp[q.id]?.includes(opt) || myVotes.includes(opt);
-                        const action = myVotes.length ? '' : `onclick="toggle('${q.id}','${opt}')"`;
+                        const isSel = state.temp[q.id] 
+                            ? state.temp[q.id].includes(opt) 
+                            : myVotes.includes(opt);
+                            
+                        // 允许重新点击，不再禁用
+                        const action = `onclick="toggle('${q.id}','${opt}')"`;
                         opts += `<div class="opt-btn ${isSel?'selected':''}" ${action}>${opt}</div>`;
                     });
-                    const btnText = myVotes.length ? '已提交' : '提交';
-                    const btnState = myVotes.length ? 'disabled style="background:#eee;color:#999"' : 'class="btn-primary" onclick="submitVote(\''+q.id+'\')"';
+
+                    // 按钮状态逻辑
+                    const hasVoted = myVotes.length > 0;
+                    // 如果有临时修改，按钮变为“提交修改”，否则如果是已投票状态，显示“修改（已提交）”
+                    const btnText = hasVoted ? '更新选择' : '提交';
+                    const btnClass = hasVoted ? 'btn-outline' : 'btn-primary';
                     
                     html += `<div class="user-card">
                         <h2 style="margin-bottom:15px;">${q.title}</h2>
                         <div style="display:flex;flex-direction:column;gap:5px;">${opts}</div>
-                        <button class="btn" ${btnState} style="width:100%;margin-top:20px;">${btnText}</button>
+                        <button class="btn ${btnClass}" onclick="submitVote('${q.id}')" style="width:100%;margin-top:20px;">${btnText}</button>
                     </div>`;
                 } 
                 else {
                     // === 管理员视图 (看板/列布局) ===
-                    // 这里我们构建横排的列
                     let columnsHtml = '';
                     
                     q.options.forEach(opt => {
-                        const voters = qVotes[opt] || []; // 拿到投这个选项的人名数组
+                        const voters = qVotes[opt] || []; 
                         const count = voters.length;
-
-                        // 生成人名卡片堆叠
                         let namesHtml = voters.map(n => `<div class="name-card">${n}</div>`).join('');
 
                         columnsHtml += `
@@ -303,7 +314,8 @@
             if(!state.pageId) state.pageId = Date.now().toString();
             if(refresh) {
                 if(!title || opts.length < 2) return alert('请完善信息');
-                state.data.questions.unshift({ id: Date.now().toString(), title, options: opts });
+                // 【修改】此处从 unshift 改为 push，让新题目加到最后
+                state.data.questions.push({ id: Date.now().toString(), title, options: opts });
             }
 
             document.getElementById('loading').style.display = 'flex';
@@ -318,14 +330,37 @@
         }
 
         async function submitVote(qid) {
-            const sels = state.temp[qid];
-            if(!sels || !sels.length) return showToast('请选择');
+            // 提交时，如果 state.temp 里没数据（用户没动过直接点提交），则不处理
+            // 或者如果用户想只提交空的（撤销投票），也可以处理
+            
+            let sels = state.temp[qid];
+            
+            // 如果 sels 为 undefined，说明用户没点任何选项直接点了按钮
+            // 这种情况下，如果是“更新选择”按钮，我们假设用户想保持原样，或者不做操作
+            // 这里为了简单，强制用户必须点击至少一下或者 temp 必须初始化
+            if(sels === undefined) {
+                // 尝试取当前已选的，如果也没选，提示
+                const current = getMyVotes(qid);
+                if(current.length === 0) return showToast('请选择');
+                sels = current; // 没改动，原样提交（其实没必要，但为了逻辑通顺）
+            }
+            
+            if(!sels || !sels.length) return showToast('请选择至少一项');
+
             document.getElementById('loading').style.display = 'flex';
             
             const { data: latest } = await db.from('quizzes').select('votes').eq('id', state.pageId).single();
             let cloudVotes = latest?.votes || state.data.votes || {};
             if(!cloudVotes[qid]) cloudVotes[qid] = {};
             
+            // 【关键修改】先清除该用户在该题目下的所有旧记录（实现重选功能）
+            Object.keys(cloudVotes[qid]).forEach(optKey => {
+                if(Array.isArray(cloudVotes[qid][optKey])) {
+                    cloudVotes[qid][optKey] = cloudVotes[qid][optKey].filter(u => u !== state.user);
+                }
+            });
+
+            // 再添加新记录
             sels.forEach(opt => {
                 if(!cloudVotes[qid][opt]) cloudVotes[qid][opt] = [];
                 if(!cloudVotes[qid][opt].includes(state.user)) cloudVotes[qid][opt].push(state.user);
@@ -333,7 +368,10 @@
 
             const { error } = await db.from('quizzes').update({ votes: cloudVotes }).eq('id', state.pageId);
             document.getElementById('loading').style.display = 'none';
-            if(!error) { delete state.temp[qid]; showToast('投票成功'); }
+            if(!error) { 
+                delete state.temp[qid]; // 清除临时状态
+                showToast('提交成功'); 
+            }
         }
 
         async function clearVotes() {
@@ -350,14 +388,20 @@
         }
 
         function toggle(qid, opt) {
-            if(!state.temp[qid]) state.temp[qid] = [];
+            // 【修改】如果临时状态不存在，先从已有的投票记录中深拷贝一份
+            // 这样用户可以在已有选择的基础上进行修改
+            if(!state.temp[qid]) {
+                state.temp[qid] = [...getMyVotes(qid)];
+            }
+            
             const i = state.temp[qid].indexOf(opt);
             if(i > -1) state.temp[qid].splice(i, 1); else state.temp[qid].push(opt);
             render();
         }
+
         function getMyVotes(qid) {
             const v = state.data.votes[qid];
-            return v ? Object.keys(v).filter(k => v[k].includes(state.user)) : [];
+            return v ? Object.keys(v).filter(k => v[k] && v[k].includes(state.user)) : [];
         }
         function showAuth() { document.getElementById('auth-modal').style.display = 'flex'; }
         function checkAuth() {
