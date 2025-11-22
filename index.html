@@ -27,6 +27,8 @@
         
         .btn { padding: 8px 12px; border-radius: 6px; border: none; font-weight: 700; cursor: pointer; transition: 0.2s; font-size: 14px; }
         .btn-primary { background: #222; color: white; }
+        /* 新增红色删除按钮样式 */
+        .btn-danger { background: #ffebee; color: #d32f2f; border: 1px solid #ffcdd2; }
         .btn-ghost { background: transparent; color: #666; }
         .btn-outline { background: transparent; border: 2px solid #222; color: #222; }
         .btn-sm { font-size: 12px; padding: 5px 10px; }
@@ -34,7 +36,17 @@
 
         /* 看板视图 */
         .board-container { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 10px; align-items: flex-start; }
-        .board-col { flex: 1; min-width: 160px; background: #eef0f2; border-radius: 12px; padding: 15px; display: flex; flex-direction: column; border-top: 6px solid #ccc; transition: all 0.3s; }
+        .board-col { 
+            flex: 1; 
+            min-width: 200px; /* 稍微加宽以容纳多列名字 */
+            background: #eef0f2; 
+            border-radius: 12px; 
+            padding: 15px; 
+            display: flex; 
+            flex-direction: column; 
+            border-top: 6px solid #ccc; 
+            transition: all 0.3s; 
+        }
         .board-col:nth-child(5n+1) { border-top-color: var(--c1); }
         .board-col:nth-child(5n+2) { border-top-color: var(--c2); }
         .board-col:nth-child(5n+3) { border-top-color: var(--c3); }
@@ -45,8 +57,41 @@
         .col-title { font-size: 18px; font-weight: 800; color: #333; margin-bottom: 5px; line-height: 1.2; }
         .col-count { font-size: 28px; font-weight: 900; color: var(--primary); }
         
-        .voter-list { display: flex; flex-direction: column; gap: 8px; }
-        .name-card { background: white; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 15px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.03); animation: popIn 0.4s; color: #444; }
+        /* === 关键修改：人名列表 Grid 布局 (8行自动分列) === */
+        .voter-list { 
+            display: grid;
+            /* 限制为8行，高度自适应内容 */
+            grid-template-rows: repeat(8, min-content);
+            /* 先填满列，再往右增加新列 */
+            grid-auto-flow: column;
+            gap: 6px;
+            overflow-x: auto; /* 如果列太多，允许横向滚动 */
+            padding-bottom: 5px;
+            height: auto;
+            align-content: start;
+        }
+
+        /* === 关键修改：人名卡片自适应 === */
+        .name-card { 
+            background: white; 
+            padding: 5px 4px; 
+            border-radius: 6px; 
+            font-weight: 600; 
+            text-align: center; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+            animation: popIn 0.4s; 
+            color: #444; 
+            
+            /* 自适应宽度和字体 */
+            width: 100%; 
+            min-width: 70px; /* 最小宽度防止太挤 */
+            white-space: nowrap; /* 名字不换行 */
+            overflow: hidden;
+            text-overflow: ellipsis; /* 太长显示省略号 */
+            
+            /* 字体大小随视口微调，最小11px，最大14px */
+            font-size: clamp(11px, 1.5vw, 14px);
+        }
         
         /* 用户视图 */
         .user-card { background: white; padding: 25px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); }
@@ -59,9 +104,12 @@
         body.focus-mode #admin-box { display: none !important; } 
         body.focus-mode .user-card { display: none; }
         body.focus-mode .board-container { justify-content: center; padding: 20px; height: 100%; align-items: center; }
-        body.focus-mode .board-col { min-width: 200px; height: 80%; overflow-y: auto; font-size: 1.2em; }
+        /* 专注模式下调整列宽和字体 */
+        body.focus-mode .board-col { min-width: 220px; height: 85%; overflow-y: hidden; } 
+        body.focus-mode .voter-list { overflow-y: hidden; height: 100%; align-content: center;} 
         body.focus-mode .col-title { font-size: 24px; }
         body.focus-mode .col-count { font-size: 40px; }
+        body.focus-mode .name-card { font-size: 16px; padding: 8px; }
 
         @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; justify-content:center; align-items:center; z-index:1000; backdrop-filter: blur(3px); }
@@ -111,7 +159,8 @@
                 <div style="display:flex; gap:10px;">
                     <button onclick="openAddModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">+ 新题</button>
                     <button onclick="showQRCodeModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📱 二维码</button>
-                    <button onclick="clearVotes()" class="btn" style="background:rgba(255,50,50,0.2); color:#ff8a80;">清空</button>
+                    <!-- 全局清空 -->
+                    <button onclick="clearVotes()" class="btn" style="background:rgba(255,50,50,0.2); color:#ff8a80;">清空全部</button>
                 </div>
             </div>
         </div>
@@ -284,10 +333,23 @@
                     q.options.forEach(opt => {
                         const voters = qVotes[opt] || []; 
                         const count = voters.length;
+                        // 这里生成人名卡片，由 CSS Grid 负责 8行排列
                         let namesHtml = voters.map(n => `<div class="name-card">${n}</div>`).join('');
                         columnsHtml += `<div class="board-col"><div class="col-header"><div class="col-title">${opt}</div><div class="col-count">${count}</div></div><div class="voter-list">${namesHtml}</div></div>`;
                     });
-                    const headerTools = isFocus ? '' : `<div style="display:flex; gap:10px;"><button onclick="copyFocusLink('${q.id}')" class="btn btn-sm btn-primary">🔗 复制投屏链接</button><button onclick="delQ('${q.id}')" class="btn btn-sm btn-ghost">×</button></div>`;
+
+                    // === 修改点：删除按钮逻辑 ===
+                    // 仅在非专注模式下显示工具栏
+                    let headerTools = '';
+                    if (!isFocus) {
+                        headerTools = `
+                        <div style="display:flex; gap:10px;">
+                            <button onclick="copyFocusLink('${q.id}')" class="btn btn-sm btn-primary">🔗 投屏链接</button>
+                            <!-- 红色删除按钮 -->
+                            <button onclick="delQ('${q.id}')" class="btn btn-sm btn-danger">删除题目</button>
+                        </div>`;
+                    }
+
                     const titleStyle = isFocus ? 'font-size:40px; text-align:center;' : 'font-size:24px;';
                     html += `<div style="margin-bottom:40px; height:100%;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h1 style="${titleStyle}">${q.title}</h1>${headerTools}</div><div class="board-container">${columnsHtml}</div></div>`;
                 }
@@ -365,9 +427,15 @@
         async function clearVotes() {
             if(confirm('清空所有结果？')) { state.data.votes = {}; await saveToCloud(false); showToast('已清空'); }
         }
+        
         async function delQ(qid) {
-            if(confirm('删除题目？')) { state.data.questions = state.data.questions.filter(q=>q.id!==qid); delete state.data.votes[qid]; await saveToCloud(false); }
+            if(confirm('确定删除这道题吗？')) { 
+                state.data.questions = state.data.questions.filter(q=>q.id!==qid); 
+                delete state.data.votes[qid]; 
+                await saveToCloud(false); 
+            }
         }
+        
         function toggle(qid, opt) {
             if(!state.temp[qid]) state.temp[qid] = [...getMyVotes(qid)];
             const i = state.temp[qid].indexOf(opt);
