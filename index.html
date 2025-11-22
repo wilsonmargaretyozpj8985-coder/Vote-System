@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>互动投票</title>
-    <!-- 引入 Supabase -->
+    <!-- 引入 Supabase (MemFire DB 兼容) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <!-- 引入 二维码生成库 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -66,7 +66,9 @@
         @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; justify-content:center; align-items:center; z-index:1000; backdrop-filter: blur(3px); }
         .modal-box { background:white; width:90%; max-width:400px; padding:30px; border-radius: 16px; position: relative;}
-        #loading { position:fixed; top:0; left:0; width:100%; height:100%; background:#f0f2f5; z-index:2000; display:flex; justify-content:center; align-items:center; flex-direction:column; transition: opacity 0.5s; }
+        
+        /* Loading 层 z-index 设置为 2000，登录弹窗 z-index 为 2500 确保能覆盖 */
+        #loading { position:fixed; top:0; left:0; width:100%; height:100%; background:#f0f2f5; z-index:2000; display:flex; justify-content:center; align-items:center; flex-direction:column; }
         .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#333; color:white; padding:10px 20px; border-radius: 30px; display:none; z-index:3000; }
         
         /* 二维码弹窗专用 */
@@ -76,16 +78,18 @@
 </head>
 <body>
 
+    <!-- 加载动画 -->
     <div id="loading">
         <div style="font-weight:bold; color:#555;">连接投票服务器...</div>
     </div>
 
-    <!-- 登录 -->
-    <div id="login-modal" class="modal" style="display:flex; z-index:1500;">
+    <!-- 登录弹窗 (z-index 调高，确保在 Loading 消失后可见) -->
+    <div id="login-modal" class="modal" style="display:flex; z-index:2500;">
         <div class="modal-box" style="text-align:center;">
-            <h2 style="margin-bottom:20px;">👋 欢迎</h2>
-            <input type="text" id="username" class="input" placeholder="请输入您的名字" style="text-align:center; margin-bottom:20px;">
-            <button onclick="handleLogin()" class="btn btn-primary" style="width:100%">进入</button>
+            <h2 style="margin-bottom:20px;">👋 欢迎参与</h2>
+            <p style="color:#666; margin-bottom:15px; font-size:14px;">请输入您的名字以便统计</p>
+            <input type="text" id="username" class="input" placeholder="您的名字" style="text-align:center; margin-bottom:20px;">
+            <button onclick="handleLogin()" class="btn btn-primary" style="width:100%">进入投票</button>
         </div>
     </div>
 
@@ -151,6 +155,7 @@
     <div id="toast" class="toast"></div>
 
     <script>
+        // --- MemFire 配置 (保持不变) ---
         const MEMFIRE_URL = 'https://d4g6fdgg91htqli3u7sg.baseapi.memfiredb.com';
         const MEMFIRE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImV4cCI6MzM0MDUzMTM4MiwiaWF0IjoxNzYzNzMxMzgyLCJpc3MiOiJzdXBhYmFzZSJ9.fsVIuQNlARfMnBzz3GkhfnQa6nAemjRiMta_nPvNqro';
 
@@ -159,7 +164,9 @@
         const urlParams = new URLSearchParams(location.search);
         
         let state = {
-            user: localStorage.getItem('wx_vote_user_final'), // 这里是 null，会触发登录
+            // 这里使用了 localStorage 读取缓存，如果没有缓存，则为空字符串
+            // 空字符串会触发后续的登录弹窗逻辑
+            user: localStorage.getItem('wx_vote_user_final') || '', 
             role: urlParams.get('admin') === '1' ? 'admin' : 'user',
             pageId: urlParams.get('id'),
             focusId: urlParams.get('focus'),
@@ -167,83 +174,63 @@
             temp: {} 
         };
 
-        // === 安全启动逻辑 ===
         window.onload = function() {
-            // 设置一个3秒的定时器，如果加载卡住了，强制关闭 Loading 层，防止白屏
-            setTimeout(function(){
+            const { createClient } = supabase;
+            db = createClient(MEMFIRE_URL, MEMFIRE_KEY);
+            
+            if (state.focusId) {
+                // 专注模式：不需要登录
+                document.body.classList.add('focus-mode');
+                document.getElementById('loading').style.display = 'none'; 
+                document.getElementById('login-modal').style.display = 'none';
+                state.role = 'admin'; 
+                initApp();
+            } 
+            else if(state.user) {
+                // 有缓存名字：不需要登录，直接进入
                 document.getElementById('loading').style.display = 'none';
-            }, 3000);
-
-            try {
-                // 检查 Supabase 库是否加载成功
-                if (typeof supabase === 'undefined') {
-                    alert('网络连接失败：无法加载投票数据库。请检查网络或刷新页面。');
-                    document.getElementById('loading').style.display = 'none';
-                    return;
-                }
-
-                const { createClient } = supabase;
-                db = createClient(MEMFIRE_URL, MEMFIRE_KEY);
-                
-                if (state.focusId) {
-                    // 投屏模式
-                    document.body.classList.add('focus-mode');
-                    document.getElementById('login-modal').style.display = 'none';
-                    state.role = 'admin'; 
-                    initApp();
-                } else if(state.user) {
-                    // 有名字了，直接进
-                    document.getElementById('login-modal').style.display = 'none';
-                    initApp();
-                } else {
-                    // 没名字，隐藏Loading，显示登录框
-                    // 这里强制再显示一次 login-modal，防止意外隐藏
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('login-modal').style.display = 'flex';
-                }
-            } catch (e) {
-                console.error(e);
-                alert("启动出错，请截图给管理员: " + e.message);
+                document.getElementById('login-modal').style.display = 'none';
+                initApp();
+            } 
+            else {
+                // 既没专注模式，也没缓存名字：隐藏Loading，显示登录框
                 document.getElementById('loading').style.display = 'none';
+                document.getElementById('login-modal').style.display = 'flex';
             }
         };
 
         function handleLogin() {
             const name = document.getElementById('username').value.trim();
-            if(!name) return showToast('请输入名字');
+            if(!name) return showToast('请输入您的名字');
+            
             state.user = name;
+            // 写入缓存，下次刷新自动读取
             localStorage.setItem('wx_vote_user_final', name);
-            location.reload(); // 刷新页面进入
+            
+            document.getElementById('login-modal').style.display = 'none';
+            initApp();
         }
 
         async function initApp() {
             document.getElementById('app').style.display = 'block';
             document.getElementById('u-name').textContent = state.user;
             
-            // 显示管理员面板
             if(state.role === 'admin' && !state.focusId) {
                 document.getElementById('admin-box').style.display = 'block';
             }
 
-            // 只有在有 pageId 时才去联网加载数据
-            if(state.pageId) { 
-                await loadData(); 
-                setupRealtime(); 
-            } else {
+            if(state.pageId) { await loadData(); setupRealtime(); }
+            else {
                 document.getElementById('loading').style.display = 'none';
-                if(state.role === 'user') {
-                    document.getElementById('quiz-list').innerHTML = '<div style="text-align:center;margin-top:50px;color:#999">暂无活动</div>';
-                }
+                if(state.role === 'user') document.getElementById('quiz-list').innerHTML = '<div style="text-align:center;margin-top:50px;color:#999">暂无活动</div>';
             }
         }
 
         async function loadData() {
             try {
-                const { data, error } = await db.from('quizzes').select('*').eq('id', state.pageId).single();
+                const { data } = await db.from('quizzes').select('*').eq('id', state.pageId).single();
                 if(data) updateUI(data);
-            } catch(e) {
-                console.log("加载数据轻微错误(可忽略):", e);
-            }
+            } catch(e) {}
             document.getElementById('loading').style.display = 'none';
         }
 
@@ -280,11 +267,9 @@
                 const isFocus = !!state.focusId;
 
                 if(!isAdmin) {
-                    // 用户视图
                     const myVotes = getMyVotes(q.id);
                     let opts = '';
                     q.options.forEach(opt => {
-                        // 检查是否选中：优先看临时选择(temp)，没有再看已提交的(votes)
                         const isSel = state.temp[q.id] ? state.temp[q.id].includes(opt) : myVotes.includes(opt);
                         const action = `onclick="toggle('${q.id}','${opt}')"`;
                         opts += `<div class="opt-btn ${isSel?'selected':''}" ${action}>${opt}</div>`;
@@ -295,7 +280,6 @@
                     html += `<div class="user-card"><h2 style="margin-bottom:15px;">${q.title}</h2><div style="display:flex;flex-direction:column;gap:5px;">${opts}</div><button class="btn ${btnClass}" onclick="submitVote('${q.id}')" style="width:100%;margin-top:20px;">${btnText}</button></div>`;
                 } 
                 else {
-                    // 管理员/大屏视图
                     let columnsHtml = '';
                     q.options.forEach(opt => {
                         const voters = qVotes[opt] || []; 
@@ -311,13 +295,21 @@
             box.innerHTML = html;
         }
 
-        // === 功能函数 ===
+        // --- 二维码逻辑 ---
         function showQRCodeModal() {
             const userUrl = `${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}`;
             const qrBox = document.getElementById('qrcode-box');
             qrBox.innerHTML = ''; 
             document.getElementById('qr-modal').style.display = 'flex';
-            new QRCode(qrBox, { text: userUrl, width: 200, height: 200, colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H });
+            
+            new QRCode(qrBox, {
+                text: userUrl,
+                width: 200,
+                height: 200,
+                colorDark : "#000000",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.H
+            });
         }
 
         function copyFocusLink(qid) {
@@ -353,24 +345,18 @@
             }
             if(!sels || !sels.length) return showToast('请选择至少一项');
             document.getElementById('loading').style.display = 'flex';
-            
-            // 获取最新数据以避免冲突
             const { data: latest } = await db.from('quizzes').select('votes').eq('id', state.pageId).single();
             let cloudVotes = latest?.votes || state.data.votes || {};
             if(!cloudVotes[qid]) cloudVotes[qid] = {};
-            
-            // 移除旧票
             Object.keys(cloudVotes[qid]).forEach(optKey => {
                 if(Array.isArray(cloudVotes[qid][optKey])) {
                     cloudVotes[qid][optKey] = cloudVotes[qid][optKey].filter(u => u !== state.user);
                 }
             });
-            // 添加新票
             sels.forEach(opt => {
                 if(!cloudVotes[qid][opt]) cloudVotes[qid][opt] = [];
                 if(!cloudVotes[qid][opt].includes(state.user)) cloudVotes[qid][opt].push(state.user);
             });
-
             const { error } = await db.from('quizzes').update({ votes: cloudVotes }).eq('id', state.pageId);
             document.getElementById('loading').style.display = 'none';
             if(!error) { delete state.temp[qid]; showToast('提交成功'); }
