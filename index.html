@@ -1,4 +1,4 @@
-<!-- START OF FILE index (9).html -->
+<!-- START OF FILE index (11).html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -38,6 +38,7 @@
             gap: 15px; 
             padding-bottom: 10px; 
             align-items: start; 
+            overflow-x: auto; 
         }
 
         .board-col { 
@@ -62,8 +63,8 @@
         
         .voter-list { 
             display: grid;
-            grid-template-rows: repeat(8, min-content);
-            grid-auto-flow: column;
+            grid-template-rows: repeat(8, min-content); 
+            grid-auto-flow: column; 
             gap: 6px;
             overflow-x: auto; 
             padding-bottom: 5px;
@@ -81,11 +82,11 @@
             animation: popIn 0.4s; 
             color: #444; 
             width: 100%; 
-            min-width: 70px; 
+            min-width: 60px; 
             white-space: nowrap; 
             overflow: hidden;
             text-overflow: ellipsis; 
-            font-size: clamp(11px, 1.5vw, 14px);
+            font-size: clamp(10px, 1.2vw, 13px); 
         }
         
         .user-card { background: white; padding: 25px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); }
@@ -149,11 +150,11 @@
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-weight:bold;">🔴 总控台</span>
                 <div style="display:flex; gap:10px;">
-                    <!-- 新增：开启新场次按钮 -->
                     <button onclick="startNewSession()" class="btn" style="background:#fff; color:#333; font-weight:800;">🚀 新场次</button>
+                    <button onclick="generateTestData()" class="btn" style="background:rgba(100,255,100,0.2); color:#a5d6a7;">🧪 测试</button>
                     <button onclick="openAddModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">+ 新题</button>
                     <button onclick="showQRCodeModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📱 二维码</button>
-                    <button onclick="clearVotes()" class="btn" style="background:rgba(255,50,50,0.2); color:#ff8a80;">清空全部</button>
+                    <button onclick="clearVotes()" class="btn" style="background:rgba(255,50,50,0.2); color:#ff8a80;">清空</button>
                 </div>
             </div>
         </div>
@@ -161,7 +162,6 @@
         <div id="quiz-list"></div>
     </div>
 
-    <!-- 新建/编辑 弹窗 -->
     <div id="edit-modal" class="modal">
         <div class="modal-box">
             <h3 id="modal-title">新建投票</h3><br>
@@ -281,6 +281,41 @@
             render();
         }
 
+        function generateTestData() {
+            if(!confirm('⚠️ 确定生成测试数据吗？\n这将清除当前页面显示的内容（仅本地预览，不会自动保存到服务器）。')) return;
+
+            const q1_id = 'test_70_stress';
+            const q2_id = 'test_6x20_layout';
+
+            state.data.questions = [
+                {
+                    id: q1_id,
+                    title: '🔥 压力测试：单选项70人堆积',
+                    options: ['超级热门', '冷门陪跑']
+                },
+                {
+                    id: q2_id,
+                    title: '📊 布局测试：6列 x 20人均衡',
+                    options: ['方案A', '方案B', '方案C', '方案D', '方案E', '方案F']
+                }
+            ];
+
+            state.data.votes = {};
+            
+            state.data.votes[q1_id] = {
+                '超级热门': Array.from({length: 70}, (_, i) => `观众${i+1}`),
+                '冷门陪跑': ['孤勇者']
+            };
+
+            state.data.votes[q2_id] = {};
+            ['方案A', '方案B', '方案C', '方案D', '方案E', '方案F'].forEach((opt, idx) => {
+                state.data.votes[q2_id][opt] = Array.from({length: 20}, (_, i) => `校友${idx*20 + i + 1}`);
+            });
+
+            render();
+            showToast('测试数据已生成 (仅本地)');
+        }
+
         function render() {
             const box = document.getElementById('quiz-list');
             let html = '';
@@ -366,11 +401,9 @@
             navigator.clipboard.writeText(url).then(() => { showToast('已复制投屏链接'); });
         }
 
-        // === 新增功能：开启新场次 ===
         function startNewSession() {
             if(confirm('⚠️ 确定开启新场次？\n\n1. 系统将生成全新的二维码和链接。\n2. 旧的二维码将无法控制当前屏幕。\n3. 适合换了一波新观众时使用。')) {
                 const newId = Date.now().toString();
-                // 强制重定向到新ID
                 location.href = location.pathname + '?id=' + newId + '&admin=1';
             }
         }
@@ -443,30 +476,42 @@
             await saveToCloud(false); 
         }
 
+        // === 修改点：提交投票逻辑 ===
         async function submitVote(qid) {
             let sels = state.temp[qid];
             if(sels === undefined) {
-                const current = getMyVotes(qid);
-                if(current.length === 0) return showToast('请选择');
-                sels = current;
+                sels = getMyVotes(qid); // 如果用户没操作直接点提交，获取当前状态
             }
-            if(!sels || !sels.length) return showToast('请选择至少一项');
+            
+            // 移除了空校验，允许空数组提交（即撤销）
+
             document.getElementById('loading').style.display = 'flex';
             const { data: latest } = await db.from('quizzes').select('votes').eq('id', state.pageId).single();
             let cloudVotes = latest?.votes || state.data.votes || {};
             if(!cloudVotes[qid]) cloudVotes[qid] = {};
+            
+            // 1. 先从所有选项中移除该用户
             Object.keys(cloudVotes[qid]).forEach(optKey => {
                 if(Array.isArray(cloudVotes[qid][optKey])) {
                     cloudVotes[qid][optKey] = cloudVotes[qid][optKey].filter(u => u !== state.user);
                 }
             });
+            
+            // 2. 将用户加入到新选择的选项中（如果 sels 为空，这一步自然不执行）
             sels.forEach(opt => {
                 if(!cloudVotes[qid][opt]) cloudVotes[qid][opt] = [];
                 if(!cloudVotes[qid][opt].includes(state.user)) cloudVotes[qid][opt].push(state.user);
             });
+
             const { error } = await db.from('quizzes').update({ votes: cloudVotes }).eq('id', state.pageId);
             document.getElementById('loading').style.display = 'none';
-            if(!error) { delete state.temp[qid]; showToast('提交成功'); }
+            
+            if(!error) { 
+                delete state.temp[qid]; 
+                // 提示语逻辑优化
+                if (sels.length === 0) showToast('已撤销投票');
+                else showToast('提交成功'); 
+            }
         }
 
         async function clearVotes() {
