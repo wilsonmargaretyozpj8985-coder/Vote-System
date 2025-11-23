@@ -1,4 +1,4 @@
-<!-- START OF FILE index (20).html -->
+<!-- START OF FILE index (22).html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -54,23 +54,23 @@
             height: 100%; 
         }
 
-        /* === 修复点2：选项标题框 (自动高度，保证显示) === */
+        /* 选项标题框 (自动撑高，JS统一高度) */
         .col-header { 
-            margin-bottom: 10px; 
+            margin-bottom: 0;
             text-align: center; 
             background: #eef0f2;
             border-top: 6px solid #ccc;
             border-radius: 8px;
-            /* 改为最小高度，允许撑开 */
-            min-height: 80px; 
+            min-height: 80px; /* 最小高度 */
             height: auto; 
-            padding: 10px 5px; /* 增加内边距防止文字贴边 */
+            padding: 15px 10px; 
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             flex-shrink: 0; 
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            transition: height 0.2s ease; /* 平滑过渡 */
         }
         
         .board-col:nth-child(5n+1) .col-header { border-top-color: var(--c1); }
@@ -83,22 +83,21 @@
             font-size: 18px; 
             font-weight: 800; 
             color: #333; 
-            margin-bottom: 4px; 
+            margin-bottom: 5px; 
             line-height: 1.3; 
-            /* 允许换行，显示全部内容 */
-            white-space: normal; 
-            word-wrap: break-word;
-            overflow: visible; 
+            white-space: pre-wrap; 
+            word-break: break-word; /* 保证长文字换行 */
         }
         .col-count { font-size: 20px; font-weight: 900; color: var(--primary); opacity: 0.6; }
         
         /* 名字列表 (严格8行) */
         .voter-list { 
+            margin-top: 15px; /* 拉开与方框的距离 */
             display: grid;
             grid-template-rows: repeat(8, 1fr); 
             grid-auto-flow: column; 
-            column-gap: 8px; 
-            row-gap: 6px;    
+            column-gap: 10px; 
+            row-gap: 10px;    
             overflow-x: auto; 
             padding-bottom: 5px;
             flex: 1; 
@@ -123,7 +122,7 @@
             align-items: center;
             justify-content: center;
             height: 100%; 
-            font-size: clamp(10px, 1.1vw, 13px); 
+            font-size: clamp(10px, 1.1vw, 14px); 
         }
         
         .user-card { background: white; padding: 25px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); }
@@ -134,7 +133,7 @@
         .active-question-card { border: 2px solid var(--active-border); position: relative; }
         .active-question-card::after { content: "正在进行"; position: absolute; top: -12px; right: 20px; background: var(--active-border); color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: bold; }
 
-        /* 演示端 (Presenter) 布局 */
+        /* 演示端布局 */
         .presenter-layout {
             display: flex;
             flex-direction: column;
@@ -301,21 +300,15 @@
             document.getElementById('login-modal').style.display = 'none';
         }
 
-        // === 修复点1：点击登录直接进入，不等待异步加载 ===
         function handleLogin() {
             const nameInput = document.getElementById('username');
             let name = nameInput.value.trim();
             if(!name) return showToast('请输入您的名字');
-            
             state.user = name;
             localStorage.setItem('wx_vote_user_final', name);
-            
-            // 立即关闭弹窗，显示UI，防止卡死
             document.getElementById('login-modal').style.display = 'none';
             document.getElementById('app').style.display = 'block';
             document.getElementById('u-name').textContent = state.user;
-            
-            // 后台加载数据
             initApp();
         }
 
@@ -377,6 +370,28 @@
             targetQ.active = willBeActive;
             render();
             await saveToCloud(false); 
+        }
+
+        // === 新增：计算并同步所有表头高度 ===
+        function equalizeHeaders() {
+            const headers = document.querySelectorAll('.col-header');
+            if (headers.length === 0) return;
+
+            // 1. 重置高度以获取自然高度
+            headers.forEach(h => h.style.height = 'auto');
+
+            // 2. 找到最大高度
+            let maxH = 0;
+            headers.forEach(h => {
+                const hPx = h.offsetHeight;
+                if (hPx > maxH) maxH = hPx;
+            });
+
+            // 3. 统一设置为最大高度
+            // 只有当 maxH 大于默认 min-height (80px) 时才应用，否则保持 CSS 控制
+            if (maxH > 80) {
+                headers.forEach(h => h.style.height = maxH + 'px');
+            }
         }
 
         function render() {
@@ -468,6 +483,11 @@
                 }
             });
             box.innerHTML = html;
+
+            // === 渲染后立即执行高度同步 ===
+            requestAnimationFrame(() => {
+                equalizeHeaders();
+            });
         }
 
         function showQRCodeModal() {
