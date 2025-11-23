@@ -1,4 +1,4 @@
-<!-- START OF FILE index (7).html -->
+<!-- START OF FILE index (9).html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -26,24 +26,22 @@
         .btn { padding: 8px 12px; border-radius: 6px; border: none; font-weight: 700; cursor: pointer; transition: 0.2s; font-size: 14px; }
         .btn-primary { background: #222; color: white; }
         .btn-danger { background: #ffebee; color: #d32f2f; border: 1px solid #ffcdd2; }
-        .btn-info { background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; } /* 新增蓝色按钮 */
+        .btn-info { background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; }
         .btn-ghost { background: transparent; color: #666; }
         .btn-outline { background: transparent; border: 2px solid #222; color: #222; }
         .btn-sm { font-size: 12px; padding: 5px 10px; }
         .input { width: 100%; padding: 14px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 16px; outline: none; }
 
-        /* === 修改点4：看板视图改为 Grid 布局 === */
+        /* 看板视图 Grid 布局 */
         .board-container { 
             display: grid; 
-            /* 列数在 JS 中动态生成，这里设置默认间距 */
             gap: 15px; 
             padding-bottom: 10px; 
             align-items: start; 
         }
 
         .board-col { 
-            /* 移除 flex:1，宽度由 grid 控制 */
-            min-width: 0; /* 防止内容撑破 grid item */
+            min-width: 0;
             background: #eef0f2; 
             border-radius: 12px; 
             padding: 15px; 
@@ -52,7 +50,6 @@
             border-top: 6px solid #ccc; 
             transition: all 0.3s; 
         }
-        /* 循环颜色 */
         .board-col:nth-child(5n+1) { border-top-color: var(--c1); }
         .board-col:nth-child(5n+2) { border-top-color: var(--c2); }
         .board-col:nth-child(5n+3) { border-top-color: var(--c3); }
@@ -104,7 +101,6 @@
             height: 100%; 
             align-items: center; 
             padding: 20px;
-            /* 专注模式下，如果列数少，尽量居中 */
             justify-content: center; 
         }
         body.focus-mode .board-col { height: 85%; overflow-y: hidden; } 
@@ -153,6 +149,8 @@
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-weight:bold;">🔴 总控台</span>
                 <div style="display:flex; gap:10px;">
+                    <!-- 新增：开启新场次按钮 -->
+                    <button onclick="startNewSession()" class="btn" style="background:#fff; color:#333; font-weight:800;">🚀 新场次</button>
                     <button onclick="openAddModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">+ 新题</button>
                     <button onclick="showQRCodeModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📱 二维码</button>
                     <button onclick="clearVotes()" class="btn" style="background:rgba(255,50,50,0.2); color:#ff8a80;">清空全部</button>
@@ -212,7 +210,7 @@
             focusId: urlParams.get('focus'),
             data: { questions: [], votes: {} },
             temp: {},
-            editingId: null // 记录当前正在编辑的题目ID
+            editingId: null
         };
 
         window.onload = function() {
@@ -302,7 +300,6 @@
                 const isFocus = !!state.focusId;
 
                 if(!isAdmin) {
-                    // === 用户界面 ===
                     const myVotes = getMyVotes(q.id);
                     let opts = '';
                     q.options.forEach(opt => {
@@ -316,7 +313,6 @@
                     html += `<div class="user-card"><h2 style="margin-bottom:15px;">${q.title}</h2><div style="display:flex;flex-direction:column;gap:5px;">${opts}</div><button class="btn ${btnClass}" onclick="submitVote('${q.id}')" style="width:100%;margin-top:20px;">${btnText}</button></div>`;
                 } 
                 else {
-                    // === 管理员/大屏界面 ===
                     let columnsHtml = '';
                     q.options.forEach(opt => {
                         const voters = qVotes[opt] || []; 
@@ -327,8 +323,6 @@
 
                     let headerTools = '';
                     if (!isFocus) {
-                        // === 修改点3：顺序调整按钮 和 修改点2：编辑按钮 ===
-                        // 控制是否显示上移/下移按钮
                         const showUp = index > 0;
                         const showDown = index < state.data.questions.length - 1;
                         
@@ -342,8 +336,6 @@
                         </div>`;
                     }
 
-                    // === 修改点4：动态计算 Grid 列数 ===
-                    // 逻辑：每行最多4个。如果选项少于4个，则列数等于选项数（实现自动均分）。
                     const colCount = Math.min(q.options.length, 4);
                     const gridStyle = `grid-template-columns: repeat(${colCount}, 1fr);`;
 
@@ -374,18 +366,26 @@
             navigator.clipboard.writeText(url).then(() => { showToast('已复制投屏链接'); });
         }
 
-        // === 修改点2：编辑功能 ===
+        // === 新增功能：开启新场次 ===
+        function startNewSession() {
+            if(confirm('⚠️ 确定开启新场次？\n\n1. 系统将生成全新的二维码和链接。\n2. 旧的二维码将无法控制当前屏幕。\n3. 适合换了一波新观众时使用。')) {
+                const newId = Date.now().toString();
+                // 强制重定向到新ID
+                location.href = location.pathname + '?id=' + newId + '&admin=1';
+            }
+        }
+
         function openAddModal() {
-            state.editingId = null; // 重置为新建模式
+            state.editingId = null;
             document.getElementById('modal-title').innerText = "新建投票";
             document.getElementById('q-title').value = ''; 
             document.getElementById('q-opts').innerHTML = '';
-            addOptLine(); addOptLine(); // 默认给两个空行
+            addOptLine(); 
             document.getElementById('edit-modal').style.display = 'flex';
         }
 
         function editQ(qid) {
-            state.editingId = qid; // 标记为编辑模式
+            state.editingId = qid; 
             const q = state.data.questions.find(i => i.id === qid);
             if (!q) return;
 
@@ -407,23 +407,17 @@
             if(!state.pageId) state.pageId = Date.now().toString();
 
             if(refresh) {
-                // === 修改点1：最少选项限制改为1个 ===
                 if(!title || opts.length < 1) return alert('请填写问题和至少一个选项');
 
                 if (state.editingId) {
-                    // 编辑模式：更新原数组中的题目
                     state.data.questions = state.data.questions.map(q => {
                         if (q.id === state.editingId) {
-                            // 简单处理：直接覆盖标题和选项。
-                            // 注意：如果修改了选项文字，旧的投票统计可能会因为Key不匹配而隐藏，
-                            // 但数据库里数据还在。对于轻量应用，这是可接受的。
                             return { ...q, title, options: opts };
                         }
                         return q;
                     });
                     state.editingId = null;
                 } else {
-                    // 新建模式
                     state.data.questions.push({ id: Date.now().toString(), title, options: opts });
                 }
             }
@@ -439,19 +433,14 @@
             }
         }
 
-        // === 修改点3：调整题目顺序 ===
         async function moveQ(index, direction) {
-            // direction: -1 (上移), 1 (下移)
             const newIndex = index + direction;
             if (newIndex < 0 || newIndex >= state.data.questions.length) return;
-
-            // 交换数组元素
             const temp = state.data.questions[index];
             state.data.questions[index] = state.data.questions[newIndex];
             state.data.questions[newIndex] = temp;
-
-            render(); // 先更新UI
-            await saveToCloud(false); // 后台静默保存
+            render(); 
+            await saveToCloud(false); 
         }
 
         async function submitVote(qid) {
@@ -481,7 +470,11 @@
         }
 
         async function clearVotes() {
-            if(confirm('清空所有结果？')) { state.data.votes = {}; await saveToCloud(false); showToast('已清空'); }
+            if(confirm('⚠️ 注意：清空仅删除投票数据，二维码不变！\n\n如果需要生成新二维码，请使用“🚀 新场次”按钮。')) { 
+                state.data.votes = {}; 
+                await saveToCloud(false); 
+                showToast('已清空'); 
+            }
         }
         
         async function delQ(qid) {
