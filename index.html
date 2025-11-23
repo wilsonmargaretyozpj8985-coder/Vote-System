@@ -1,4 +1,4 @@
-<!-- START OF FILE index (11).html -->
+<!-- START OF FILE index (12).html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -90,8 +90,9 @@
         }
         
         .user-card { background: white; padding: 25px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); }
-        .opt-btn { background: #f7f7f7; padding: 15px; margin-bottom: 10px; border-radius: 10px; font-weight: 600; border: 2px solid transparent; cursor: pointer; }
+        .opt-btn { background: #f7f7f7; padding: 15px; margin-bottom: 10px; border-radius: 10px; font-weight: 600; border: 2px solid transparent; cursor: pointer; transition: 0.1s; }
         .opt-btn.selected { background: #e3f2fd; border-color: #2196f3; color: #1565c0; }
+        .opt-btn:active { transform: scale(0.98); }
 
         /* 专注模式样式 */
         body.focus-mode .navbar { display: none; }
@@ -115,7 +116,7 @@
         .modal-box { background:white; width:90%; max-width:400px; padding:30px; border-radius: 16px; position: relative;}
         
         #loading { position:fixed; top:0; left:0; width:100%; height:100%; background:#f0f2f5; z-index:2000; display:flex; justify-content:center; align-items:center; flex-direction:column; }
-        .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#333; color:white; padding:10px 20px; border-radius: 30px; display:none; z-index:3000; }
+        .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#333; color:white; padding:12px 24px; border-radius: 30px; display:none; z-index:3000; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         
         #qrcode-box { display: flex; justify-content: center; margin-bottom: 20px; }
         #qrcode-box img { border: 10px solid white; border-radius: 8px; }
@@ -271,18 +272,35 @@
             if(realtimeSub) return;
             realtimeSub = db.channel('room_' + state.pageId)
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'quizzes', filter: 'id=eq.' + state.pageId }, 
-                (payload) => { updateUI(payload.new); showToast('数据更新'); })
+                (payload) => { 
+                    // 保护性更新：防止payload为空导致白屏
+                    if(payload && payload.new) {
+                        updateUI(payload.new); 
+                    }
+                })
                 .subscribe();
         }
 
         function updateUI(serverData) {
-            state.data.questions = serverData.content || [];
-            state.data.votes = serverData.votes || {};
-            render();
+            if (!serverData) return;
+            // === 关键修复：数据保护 ===
+            // 只有当 content 存在时才覆盖，否则保留旧数据，防止闪屏或白屏
+            if (serverData.content && Array.isArray(serverData.content)) {
+                state.data.questions = serverData.content;
+            }
+            if (serverData.votes) {
+                state.data.votes = serverData.votes;
+            }
+            
+            try {
+                render();
+            } catch(e) {
+                console.error("Render Error:", e); // 捕获错误，防止整个页面卡死
+            }
         }
 
         function generateTestData() {
-            if(!confirm('⚠️ 确定生成测试数据吗？\n这将清除当前页面显示的内容（仅本地预览，不会自动保存到服务器）。')) return;
+            if(!confirm('⚠️ 确定生成测试数据吗？\n这将清除当前页面显示的内容（仅本地预览）。')) return;
 
             const q1_id = 'test_70_stress';
             const q2_id = 'test_6x20_layout';
@@ -301,17 +319,11 @@
             ];
 
             state.data.votes = {};
-            
-            state.data.votes[q1_id] = {
-                '超级热门': Array.from({length: 70}, (_, i) => `观众${i+1}`),
-                '冷门陪跑': ['孤勇者']
-            };
-
+            state.data.votes[q1_id] = { '超级热门': Array.from({length: 70}, (_, i) => `观众${i+1}`), '冷门陪跑': ['孤勇者'] };
             state.data.votes[q2_id] = {};
             ['方案A', '方案B', '方案C', '方案D', '方案E', '方案F'].forEach((opt, idx) => {
                 state.data.votes[q2_id][opt] = Array.from({length: 20}, (_, i) => `校友${idx*20 + i + 1}`);
             });
-
             render();
             showToast('测试数据已生成 (仅本地)');
         }
@@ -345,7 +357,7 @@
                     const hasVoted = myVotes.length > 0;
                     const btnText = hasVoted ? '更新选择' : '提交';
                     const btnClass = hasVoted ? 'btn-outline' : 'btn-primary';
-                    html += `<div class="user-card"><h2 style="margin-bottom:15px;">${q.title}</h2><div style="display:flex;flex-direction:column;gap:5px;">${opts}</div><button class="btn ${btnClass}" onclick="submitVote('${q.id}')" style="width:100%;margin-top:20px;">${btnText}</button></div>`;
+                    html += `<div class="user-card"><h2 style="margin-bottom:15px;">${q.title}</h2><div style="display:flex;flex-direction:column;gap:5px;">${opts}</div><button id="btn-${q.id}" class="btn ${btnClass}" onclick="submitVote('${q.id}')" style="width:100%;margin-top:20px;">${btnText}</button></div>`;
                 } 
                 else {
                     let columnsHtml = '';
@@ -360,7 +372,6 @@
                     if (!isFocus) {
                         const showUp = index > 0;
                         const showDown = index < state.data.questions.length - 1;
-                        
                         headerTools = `
                         <div style="display:flex; gap:10px; align-items:center;">
                             ${showUp ? `<button onclick="moveQ(${index}, -1)" class="btn btn-sm btn-ghost">⬆️</button>` : ''}
@@ -370,19 +381,10 @@
                             <button onclick="delQ('${q.id}')" class="btn btn-sm btn-danger">删除</button>
                         </div>`;
                     }
-
                     const colCount = Math.min(q.options.length, 4);
                     const gridStyle = `grid-template-columns: repeat(${colCount}, 1fr);`;
-
                     const titleStyle = isFocus ? 'font-size:40px; text-align:center;' : 'font-size:24px;';
-                    html += `
-                    <div style="margin-bottom:40px; height:100%;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-                            <h1 style="${titleStyle}">${q.title}</h1>
-                            ${headerTools}
-                        </div>
-                        <div class="board-container" style="${gridStyle}">${columnsHtml}</div>
-                    </div>`;
+                    html += `<div style="margin-bottom:40px; height:100%;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h1 style="${titleStyle}">${q.title}</h1>${headerTools}</div><div class="board-container" style="${gridStyle}">${columnsHtml}</div></div>`;
                 }
             });
             box.innerHTML = html;
@@ -476,41 +478,40 @@
             await saveToCloud(false); 
         }
 
-        // === 修改点：提交投票逻辑 ===
+        // === 修改：移除全屏遮罩，使用静默提交 ===
         async function submitVote(qid) {
             let sels = state.temp[qid];
-            if(sels === undefined) {
-                sels = getMyVotes(qid); // 如果用户没操作直接点提交，获取当前状态
-            }
-            
-            // 移除了空校验，允许空数组提交（即撤销）
+            if(sels === undefined) sels = getMyVotes(qid);
 
-            document.getElementById('loading').style.display = 'flex';
+            // 1. 界面反馈：显示提交中
+            showToast('提交中...');
+            
+            // 2. 准备数据
             const { data: latest } = await db.from('quizzes').select('votes').eq('id', state.pageId).single();
             let cloudVotes = latest?.votes || state.data.votes || {};
             if(!cloudVotes[qid]) cloudVotes[qid] = {};
             
-            // 1. 先从所有选项中移除该用户
             Object.keys(cloudVotes[qid]).forEach(optKey => {
                 if(Array.isArray(cloudVotes[qid][optKey])) {
                     cloudVotes[qid][optKey] = cloudVotes[qid][optKey].filter(u => u !== state.user);
                 }
             });
             
-            // 2. 将用户加入到新选择的选项中（如果 sels 为空，这一步自然不执行）
             sels.forEach(opt => {
                 if(!cloudVotes[qid][opt]) cloudVotes[qid][opt] = [];
                 if(!cloudVotes[qid][opt].includes(state.user)) cloudVotes[qid][opt].push(state.user);
             });
 
+            // 3. 发送请求 (不显示 loading 遮罩)
             const { error } = await db.from('quizzes').update({ votes: cloudVotes }).eq('id', state.pageId);
-            document.getElementById('loading').style.display = 'none';
             
+            // 4. 结果反馈
             if(!error) { 
                 delete state.temp[qid]; 
-                // 提示语逻辑优化
                 if (sels.length === 0) showToast('已撤销投票');
                 else showToast('提交成功'); 
+            } else {
+                showToast('提交失败，请重试');
             }
         }
 
