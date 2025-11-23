@@ -1,4 +1,4 @@
-<!-- START OF FILE index (15).html -->
+<!-- START OF FILE index (17).html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -114,23 +114,47 @@
             font-weight: bold;
         }
 
-        /* 专注模式 / Presenter 模式 */
-        body.focus-mode .navbar { display: none; }
-        body.focus-mode .container { padding: 0; max-width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; }
-        body.focus-mode #admin-box { display: none !important; } 
-        body.focus-mode .user-card { display: none; } /* Presenter 不显示投票卡片 */
-        body.focus-mode .board-container { 
-            height: 100%; 
-            align-items: center; 
-            padding: 20px;
-            justify-content: center; 
+        /* === 演示端 (Presenter) 专用布局 === */
+        .presenter-layout {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100%;
+            padding: 30px 40px; 
+            background: white;
+            overflow: hidden; 
         }
-        body.focus-mode .board-col { height: 85%; overflow-y: hidden; } 
-        body.focus-mode .voter-list { overflow-y: hidden; height: 100%; align-content: center;} 
-        body.focus-mode .col-title { font-size: 24px; }
-        body.focus-mode .col-count { font-size: 40px; }
-        body.focus-mode .name-card { font-size: 16px; padding: 8px; }
+        .presenter-header {
+            flex: 0 0 auto;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .presenter-title {
+            font-size: 3vw;
+            font-weight: 900;
+            line-height: 1.2;
+            margin: 0;
+        }
+        .presenter-body {
+            flex: 1 1 auto;
+            overflow: hidden; 
+            display: flex; 
+            flex-direction: column;
+        }
+        .presenter-layout .board-container {
+            height: 100%;
+            align-content: center; 
+        }
 
+        /* 专注模式基础样式 */
+        body.focus-mode .navbar { display: none; }
+        body.focus-mode .container { padding: 0; max-width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; } /* 修正：让非Presenter的专注模式也居中 */
+        /* 针对 Presenter 特殊处理，覆盖上面的 flex 居中，使用自己的 layout */
+        body.focus-mode .container:has(.presenter-layout) { display: block; padding: 0; }
+        
+        body.focus-mode #admin-box { display: none !important; } 
+        body.focus-mode .user-card { display: none; }
+        
         @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; justify-content:center; align-items:center; z-index:1000; backdrop-filter: blur(3px); }
         .modal-box { background:white; width:90%; max-width:400px; padding:30px; border-radius: 16px; position: relative;}
@@ -148,11 +172,19 @@
         <div style="font-weight:bold; color:#555;">连接投票服务器...</div>
     </div>
 
+    <!-- 登录弹窗 -->
     <div id="login-modal" class="modal" style="display:flex; z-index:2500;">
         <div class="modal-box" style="text-align:center;">
             <h2 style="margin-bottom:20px;">👋 欢迎参与</h2>
             <p style="color:#666; margin-bottom:15px; font-size:14px;">请输入您的名字以便统计</p>
-            <input type="text" id="username" class="input" placeholder="Tobias Guo" style="text-align:center; margin-bottom:20px;">
+            
+            <input type="text" id="username" class="input" placeholder="您的名字" style="text-align:center; margin-bottom:10px;">
+            
+            <!-- 简化后的提示语 -->
+            <div style="font-size:12px; color:#999; margin-bottom:20px; background:#f9f9f9; padding:6px; border-radius:6px;">
+                示例：Tobias Guo
+            </div>
+
             <button onclick="handleLogin()" class="btn btn-primary" style="width:100%">进入投票</button>
         </div>
     </div>
@@ -173,7 +205,7 @@
                 <div style="display:flex; gap:10px;">
                     <button onclick="startNewSession()" class="btn" style="background:#fff; color:#333; font-weight:800;">🚀 新场次</button>
                     <button onclick="copyPresenterLink()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📺 演示端</button>
-                    <button onclick="generateTestData()" class="btn" style="background:rgba(100,255,100,0.2); color:#a5d6a7;">🧪 测试</button>
+                    <!-- 测试按钮已移除 -->
                     <button onclick="openAddModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">+ 新题</button>
                     <button onclick="showQRCodeModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📱 二维码</button>
                     <button onclick="clearVotes()" class="btn" style="background:rgba(255,50,50,0.2); color:#ff8a80;">清空</button>
@@ -229,7 +261,6 @@
             user: localStorage.getItem('wx_vote_user_final') || '', 
             role: urlParams.get('admin') === '1' ? 'admin' : (urlParams.get('presenter') === '1' ? 'presenter' : 'user'),
             pageId: urlParams.get('id'),
-            // activeId 已移除，直接使用题目数据中的 active 属性
             data: { questions: [], votes: {} },
             temp: {},
             editingId: null
@@ -271,12 +302,9 @@
 
         function handleLogin() {
             const nameInput = document.getElementById('username');
-            // 如果用户没填，默认使用 Placeholder
             let name = nameInput.value.trim();
-            if(!name) {
-                if(nameInput.placeholder) name = nameInput.placeholder;
-                else return showToast('请输入您的名字');
-            }
+            if(!name) return showToast('请输入您的名字');
+            
             state.user = name;
             localStorage.setItem('wx_vote_user_final', name);
             document.getElementById('login-modal').style.display = 'none';
@@ -331,24 +359,13 @@
             }
         }
 
-        // === 核心修复：将 active 状态存入 content JSON 字段中 ===
         async function setActive(qid) {
-            // 找到当前点击的题目
             const targetQ = state.data.questions.find(i => i.id === qid);
             if (!targetQ) return;
-
-            // 如果它已经是激活的，则取消激活（暂停），否则激活它
             const willBeActive = !targetQ.active;
-
-            // 重置所有题目为非激活
             state.data.questions.forEach(item => item.active = false);
-
-            // 设置目标题目
             targetQ.active = willBeActive;
-
-            // 先更新本地
             render();
-            // 保存到云端 (content 字段)
             await saveToCloud(false); 
         }
 
@@ -358,13 +375,11 @@
 
             if (!state.data || !state.data.questions) return;
 
-            // === 过滤逻辑 ===
             let questionsToRender = [];
 
             if (state.role === 'admin') {
                 questionsToRender = state.data.questions;
             } else {
-                // 普通用户/Presenter 查找 active=true 的题目
                 questionsToRender = state.data.questions.filter(q => q.active === true);
                 
                 if (questionsToRender.length === 0) {
@@ -428,7 +443,7 @@
                         <div class="board-container" style="${gridStyle}">${columnsHtml}</div>
                     </div>`;
                 }
-                // === Presenter 视图 (只看结果) ===
+                // === Presenter 视图 (PPT 样式) ===
                 else if (isPresenter) {
                     let columnsHtml = '';
                     if (q.options && Array.isArray(q.options)) {
@@ -441,17 +456,18 @@
                     }
                     const colCount = q.options ? Math.min(q.options.length, 4) : 1;
                     const gridStyle = `grid-template-columns: repeat(${colCount}, 1fr);`;
-                    const titleStyle = 'font-size:40px; text-align:center;';
                     
                     html += `
-                    <div style="height:100%;">
-                        <div style="display:flex;justify-content:center;align-items:center;margin-bottom:20px;">
-                            <h1 style="${titleStyle}">${q.title}</h1>
+                    <div class="presenter-layout">
+                        <div class="presenter-header">
+                            <h1 class="presenter-title">${q.title}</h1>
                         </div>
-                        <div class="board-container" style="${gridStyle}">${columnsHtml}</div>
+                        <div class="presenter-body">
+                            <div class="board-container" style="${gridStyle}">${columnsHtml}</div>
+                        </div>
                     </div>`;
                 } 
-                // === User 视图 (投票) ===
+                // === User 视图 ===
                 else {
                     const myVotes = getMyVotes(q.id);
                     let opts = '';
@@ -539,7 +555,6 @@
             }
 
             document.getElementById('loading').style.display = 'flex';
-            // 使用 content 字段存储所有数据，包括 active 状态
             const { error } = await db.from('quizzes').upsert({
                 id: state.pageId, 
                 title: 'Vote '+state.pageId, 
@@ -609,24 +624,6 @@
                 delete state.data.votes[qid]; 
                 await saveToCloud(false); 
             }
-        }
-
-        function generateTestData() {
-            if(!confirm('⚠️ 确定生成测试数据吗？\n这将清除当前页面显示的内容（仅本地预览）。')) return;
-            const q1_id = 'test_70_stress';
-            const q2_id = 'test_6x20_layout';
-            state.data.questions = [
-                { id: q1_id, title: '🔥 压力测试：单选项70人堆积', options: ['超级热门', '冷门陪跑'] },
-                { id: q2_id, title: '📊 布局测试：6列 x 20人均衡', options: ['方案A', '方案B', '方案C', '方案D', '方案E', '方案F'] }
-            ];
-            state.data.votes = {};
-            state.data.votes[q1_id] = { '超级热门': Array.from({length: 70}, (_, i) => `观众${i+1}`), '冷门陪跑': ['孤勇者'] };
-            state.data.votes[q2_id] = {};
-            ['方案A', '方案B', '方案C', '方案D', '方案E', '方案F'].forEach((opt, idx) => {
-                state.data.votes[q2_id][opt] = Array.from({length: 20}, (_, i) => `校友${idx*20 + i + 1}`);
-            });
-            render();
-            showToast('测试数据已生成 (仅本地)');
         }
         
         function toggle(qid, opt) {
