@@ -1,4 +1,4 @@
-<!-- START OF FILE index (13).html -->
+<!-- START OF FILE index (14).html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -13,6 +13,7 @@
             --primary: #263238; 
             --bg: #f0f2f5;
             --c1: #29b6f6; --c2: #ef5350; --c3: #ffa726; --c4: #66bb6a; --c5: #ab47bc;
+            --active-border: #4caf50;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -25,6 +26,7 @@
         
         .btn { padding: 8px 12px; border-radius: 6px; border: none; font-weight: 700; cursor: pointer; transition: 0.2s; font-size: 14px; }
         .btn-primary { background: #222; color: white; }
+        .btn-success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; } /* 绿色激活按钮 */
         .btn-danger { background: #ffebee; color: #d32f2f; border: 1px solid #ffcdd2; }
         .btn-info { background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; }
         .btn-ghost { background: transparent; color: #666; }
@@ -94,11 +96,29 @@
         .opt-btn.selected { background: #e3f2fd; border-color: #2196f3; color: #1565c0; }
         .opt-btn:active { transform: scale(0.98); }
 
-        /* 专注模式样式 */
+        /* 当前激活题目高亮样式 (Admin视角) */
+        .active-question-card {
+            border: 2px solid var(--active-border);
+            position: relative;
+        }
+        .active-question-card::after {
+            content: "正在进行";
+            position: absolute;
+            top: -12px;
+            right: 20px;
+            background: var(--active-border);
+            color: white;
+            padding: 2px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        /* 专注模式 / Presenter 模式 */
         body.focus-mode .navbar { display: none; }
         body.focus-mode .container { padding: 0; max-width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; }
         body.focus-mode #admin-box { display: none !important; } 
-        body.focus-mode .user-card { display: none; }
+        body.focus-mode .user-card { display: none; } /* Presenter 不显示投票卡片 */
         body.focus-mode .board-container { 
             height: 100%; 
             align-items: center; 
@@ -124,7 +144,6 @@
 </head>
 <body>
 
-    <!-- Loading 只在初始化时显示，后续操作不再触发 -->
     <div id="loading">
         <div style="font-weight:bold; color:#555;">连接投票服务器...</div>
     </div>
@@ -133,7 +152,8 @@
         <div class="modal-box" style="text-align:center;">
             <h2 style="margin-bottom:20px;">👋 欢迎参与</h2>
             <p style="color:#666; margin-bottom:15px; font-size:14px;">请输入您的名字以便统计</p>
-            <input type="text" id="username" class="input" placeholder="您的名字" style="text-align:center; margin-bottom:20px;">
+            <!-- 修改：Placeholder 显示 Tobias Guo -->
+            <input type="text" id="username" class="input" placeholder="Tobias Guo" style="text-align:center; margin-bottom:20px;">
             <button onclick="handleLogin()" class="btn btn-primary" style="width:100%">进入投票</button>
         </div>
     </div>
@@ -153,6 +173,8 @@
                 <span style="font-weight:bold;">🔴 总控台</span>
                 <div style="display:flex; gap:10px;">
                     <button onclick="startNewSession()" class="btn" style="background:#fff; color:#333; font-weight:800;">🚀 新场次</button>
+                    <!-- 新增：Presenter 链接复制按钮 -->
+                    <button onclick="copyPresenterLink()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📺 演示端</button>
                     <button onclick="generateTestData()" class="btn" style="background:rgba(100,255,100,0.2); color:#a5d6a7;">🧪 测试</button>
                     <button onclick="openAddModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">+ 新题</button>
                     <button onclick="showQRCodeModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📱 二维码</button>
@@ -180,7 +202,8 @@
     <div id="auth-modal" class="modal">
         <div class="modal-box" style="text-align:center;">
             <h3>管理员模式</h3><br>
-            <input type="password" id="pwd" class="input" placeholder="密码: admin123" style="text-align:center; margin-bottom:20px;">
+            <!-- 修改：移除密码提示 -->
+            <input type="password" id="pwd" class="input" placeholder="请输入密码" style="text-align:center; margin-bottom:20px;">
             <button onclick="checkAuth()" class="btn btn-primary" style="width:100%">确认</button>
             <button onclick="closeModal('auth-modal')" class="btn btn-ghost" style="margin-top:10px;">取消</button>
         </div>
@@ -207,9 +230,13 @@
         
         let state = {
             user: localStorage.getItem('wx_vote_user_final') || '', 
-            role: urlParams.get('admin') === '1' ? 'admin' : 'user',
+            // 角色判断逻辑：
+            // admin=1 -> 管理员 (Admin)
+            // presenter=1 -> 演示者 (Presenter)
+            // 其他 -> 普通用户 (User)
+            role: urlParams.get('admin') === '1' ? 'admin' : (urlParams.get('presenter') === '1' ? 'presenter' : 'user'),
             pageId: urlParams.get('id'),
-            focusId: urlParams.get('focus'),
+            activeId: null, // 当前激活的题目ID
             data: { questions: [], votes: {} },
             temp: {},
             editingId: null
@@ -219,26 +246,34 @@
             const { createClient } = supabase;
             db = createClient(MEMFIRE_URL, MEMFIRE_KEY);
             
-            // 全局错误拦截，防止白屏
             window.onerror = function(msg, url, line) {
                 console.error("Global Error Caught:", msg);
-                // 尝试隐藏loading，防止卡死
                 document.getElementById('loading').style.display = 'none';
                 return false;
             };
             
-            if (state.focusId) {
+            // Presenter 模式也启用专注样式
+            if (state.role === 'presenter') {
                 document.body.classList.add('focus-mode');
                 document.getElementById('loading').style.display = 'none'; 
                 document.getElementById('login-modal').style.display = 'none';
-                state.role = 'admin'; 
+                state.user = 'Presenter'; // 虚拟名
                 initApp();
-            } 
+            }
+            // Admin 无需登录
+            else if (state.role === 'admin') {
+                document.getElementById('loading').style.display = 'none'; 
+                document.getElementById('login-modal').style.display = 'none';
+                state.user = 'Admin';
+                initApp();
+            }
+            // User 有缓存
             else if(state.user) {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('login-modal').style.display = 'none';
                 initApp();
             } 
+            // User 无缓存 -> 登录
             else {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('login-modal').style.display = 'flex';
@@ -258,7 +293,8 @@
             document.getElementById('app').style.display = 'block';
             document.getElementById('u-name').textContent = state.user;
             
-            if(state.role === 'admin' && !state.focusId) {
+            // 只有 Admin 显示总控台
+            if(state.role === 'admin') {
                 document.getElementById('admin-box').style.display = 'block';
             }
 
@@ -290,74 +326,141 @@
         }
 
         function updateUI(serverData) {
-            // === 核心防白屏逻辑 ===
             if (!serverData) return;
             
-            // 只有当数据有效时才更新，否则保留本地数据
-            // 使用 || state.data.questions 确保不会把数据覆盖成 null
             state.data.questions = serverData.content || state.data.questions || [];
             state.data.votes = serverData.votes || state.data.votes || {};
+            // 读取服务器保存的 activeId
+            state.activeId = serverData.activeId || null;
             
             try {
                 render();
             } catch(e) {
-                console.error("UI Render Error (Prevented White Screen):", e);
+                console.error("UI Render Error:", e);
             }
         }
 
-        function generateTestData() {
-            if(!confirm('⚠️ 确定生成测试数据吗？\n这将清除当前页面显示的内容（仅本地预览）。')) return;
-
-            const q1_id = 'test_70_stress';
-            const q2_id = 'test_6x20_layout';
-
-            state.data.questions = [
-                {
-                    id: q1_id,
-                    title: '🔥 压力测试：单选项70人堆积',
-                    options: ['超级热门', '冷门陪跑']
-                },
-                {
-                    id: q2_id,
-                    title: '📊 布局测试：6列 x 20人均衡',
-                    options: ['方案A', '方案B', '方案C', '方案D', '方案E', '方案F']
-                }
-            ];
-
-            state.data.votes = {};
-            state.data.votes[q1_id] = { '超级热门': Array.from({length: 70}, (_, i) => `观众${i+1}`), '冷门陪跑': ['孤勇者'] };
-            state.data.votes[q2_id] = {};
-            ['方案A', '方案B', '方案C', '方案D', '方案E', '方案F'].forEach((opt, idx) => {
-                state.data.votes[q2_id][opt] = Array.from({length: 20}, (_, i) => `校友${idx*20 + i + 1}`);
-            });
-            render();
-            showToast('测试数据已生成 (仅本地)');
+        // === 核心逻辑：设置当前激活题目 ===
+        async function setActive(qid) {
+            // 如果已经激活，再次点击则取消激活（暂停）
+            if (state.activeId === qid) {
+                state.activeId = null;
+            } else {
+                state.activeId = qid;
+            }
+            render(); // 本地先更新 UI
+            await saveToCloud(false); // 保存状态到服务器
         }
 
         function render() {
             const box = document.getElementById('quiz-list');
             let html = '';
 
-            // 防止 state.data 未初始化导致崩溃
             if (!state.data || !state.data.questions) return;
 
-            const questionsToRender = state.focusId 
-                ? state.data.questions.filter(q => q.id === state.focusId)
-                : state.data.questions;
+            // === 过滤逻辑 ===
+            let questionsToRender = [];
 
-            if(state.focusId && questionsToRender.length === 0) {
-                box.innerHTML = '<div style="text-align:center;margin-top:20%;color:#999;font-size:24px;">题目等待中...</div>';
-                return;
+            if (state.role === 'admin') {
+                // 管理员可以看到所有题目，以便进行选择
+                questionsToRender = state.data.questions;
+            } else {
+                // 普通用户 和 Presenter 只能看到当前激活的题目
+                if (state.activeId) {
+                    questionsToRender = state.data.questions.filter(q => q.id === state.activeId);
+                } else {
+                    // 如果没有激活题目，显示等待提示
+                    box.innerHTML = '<div style="text-align:center;margin-top:30%;color:#999;font-size:20px;">⏳ 等待管理员开启题目...</div>';
+                    return;
+                }
+            }
+
+            if(questionsToRender.length === 0) {
+                 if (state.role === 'admin') {
+                     box.innerHTML = '<div style="text-align:center;margin-top:50px;color:#999">点击“+ 新题”添加内容</div>';
+                 } 
+                 return;
             }
 
             questionsToRender.forEach((q, index) => {
-                if (!q) return; // 保护
+                if (!q) return; 
+                
                 const isAdmin = state.role === 'admin';
-                // 确保 votes 对象存在
+                const isPresenter = state.role === 'presenter';
                 const qVotes = (state.data.votes && state.data.votes[q.id]) ? state.data.votes[q.id] : {};
-                const isFocus = !!state.focusId;
+                
+                // === Admin 视图 ===
+                if (isAdmin) {
+                    // 检查是否是当前激活的题目
+                    const isActive = state.activeId === q.id;
+                    const activeClass = isActive ? 'active-question-card' : '';
+                    
+                    let columnsHtml = '';
+                    if (q.options && Array.isArray(q.options)) {
+                        q.options.forEach(opt => {
+                            const voters = qVotes[opt] || []; 
+                            const count = voters.length;
+                            // Admin 视图稍微简化显示名字，避免卡顿，重点是控制
+                            let namesHtml = voters.map(n => `<div class="name-card">${n}</div>`).join('');
+                            columnsHtml += `<div class="board-col"><div class="col-header"><div class="col-title">${opt}</div><div class="col-count">${count}</div></div><div class="voter-list">${namesHtml}</div></div>`;
+                        });
+                    }
 
-                if(!isAdmin) {
+                    const showUp = index > 0;
+                    const showDown = index < state.data.questions.length - 1;
+                    
+                    // 播放按钮状态
+                    const playBtnText = isActive ? '⏸️ 停止' : '▶️ 播放';
+                    const playBtnClass = isActive ? 'btn-danger' : 'btn-success';
+
+                    const headerTools = `
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <button onclick="setActive('${q.id}')" class="btn btn-sm ${playBtnClass}">${playBtnText}</button>
+                        <div style="width:10px;"></div> <!-- Spacer -->
+                        ${showUp ? `<button onclick="moveQ(${index}, -1)" class="btn btn-sm btn-ghost">⬆️</button>` : ''}
+                        ${showDown ? `<button onclick="moveQ(${index}, 1)" class="btn btn-sm btn-ghost">⬇️</button>` : ''}
+                        <button onclick="editQ('${q.id}')" class="btn btn-sm btn-info">修改</button>
+                        <button onclick="delQ('${q.id}')" class="btn btn-sm btn-danger">删除</button>
+                    </div>`;
+
+                    const colCount = q.options ? Math.min(q.options.length, 4) : 1;
+                    const gridStyle = `grid-template-columns: repeat(${colCount}, 1fr);`;
+                    
+                    // 将 Admin 内容包裹在 div 中，如果激活了加上 activeClass 边框
+                    html += `
+                    <div class="${activeClass}" style="margin-bottom:40px; padding:15px; border-radius:12px; background:white;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                            <h2 style="font-size:20px;">${q.title}</h2>
+                            ${headerTools}
+                        </div>
+                        <div class="board-container" style="${gridStyle}">${columnsHtml}</div>
+                    </div>`;
+                }
+                // === Presenter 视图 (只看结果) ===
+                else if (isPresenter) {
+                    let columnsHtml = '';
+                    if (q.options && Array.isArray(q.options)) {
+                        q.options.forEach(opt => {
+                            const voters = qVotes[opt] || []; 
+                            const count = voters.length;
+                            let namesHtml = voters.map(n => `<div class="name-card">${n}</div>`).join('');
+                            columnsHtml += `<div class="board-col"><div class="col-header"><div class="col-title">${opt}</div><div class="col-count">${count}</div></div><div class="voter-list">${namesHtml}</div></div>`;
+                        });
+                    }
+                    const colCount = q.options ? Math.min(q.options.length, 4) : 1;
+                    const gridStyle = `grid-template-columns: repeat(${colCount}, 1fr);`;
+                    const titleStyle = 'font-size:40px; text-align:center;';
+                    
+                    html += `
+                    <div style="height:100%;">
+                        <div style="display:flex;justify-content:center;align-items:center;margin-bottom:20px;">
+                            <h1 style="${titleStyle}">${q.title}</h1>
+                        </div>
+                        <div class="board-container" style="${gridStyle}">${columnsHtml}</div>
+                    </div>`;
+                } 
+                // === User 视图 (投票) ===
+                else {
                     const myVotes = getMyVotes(q.id);
                     let opts = '';
                     if (q.options && Array.isArray(q.options)) {
@@ -371,41 +474,13 @@
                     const btnText = hasVoted ? '更新选择' : '提交';
                     const btnClass = hasVoted ? 'btn-outline' : 'btn-primary';
                     html += `<div class="user-card"><h2 style="margin-bottom:15px;">${q.title}</h2><div style="display:flex;flex-direction:column;gap:5px;">${opts}</div><button id="btn-${q.id}" class="btn ${btnClass}" onclick="submitVote('${q.id}')" style="width:100%;margin-top:20px;">${btnText}</button></div>`;
-                } 
-                else {
-                    let columnsHtml = '';
-                    if (q.options && Array.isArray(q.options)) {
-                        q.options.forEach(opt => {
-                            const voters = qVotes[opt] || []; 
-                            const count = voters.length;
-                            let namesHtml = voters.map(n => `<div class="name-card">${n}</div>`).join('');
-                            columnsHtml += `<div class="board-col"><div class="col-header"><div class="col-title">${opt}</div><div class="col-count">${count}</div></div><div class="voter-list">${namesHtml}</div></div>`;
-                        });
-                    }
-
-                    let headerTools = '';
-                    if (!isFocus) {
-                        const showUp = index > 0;
-                        const showDown = index < state.data.questions.length - 1;
-                        headerTools = `
-                        <div style="display:flex; gap:10px; align-items:center;">
-                            ${showUp ? `<button onclick="moveQ(${index}, -1)" class="btn btn-sm btn-ghost">⬆️</button>` : ''}
-                            ${showDown ? `<button onclick="moveQ(${index}, 1)" class="btn btn-sm btn-ghost">⬇️</button>` : ''}
-                            <button onclick="copyFocusLink('${q.id}')" class="btn btn-sm btn-primary">🔗 投屏</button>
-                            <button onclick="editQ('${q.id}')" class="btn btn-sm btn-info">修改</button>
-                            <button onclick="delQ('${q.id}')" class="btn btn-sm btn-danger">删除</button>
-                        </div>`;
-                    }
-                    const colCount = q.options ? Math.min(q.options.length, 4) : 1;
-                    const gridStyle = `grid-template-columns: repeat(${colCount}, 1fr);`;
-                    const titleStyle = isFocus ? 'font-size:40px; text-align:center;' : 'font-size:24px;';
-                    html += `<div style="margin-bottom:40px; height:100%;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h1 style="${titleStyle}">${q.title}</h1>${headerTools}</div><div class="board-container" style="${gridStyle}">${columnsHtml}</div></div>`;
                 }
             });
             box.innerHTML = html;
         }
 
         function showQRCodeModal() {
+            // 普通用户链接 (无参数)
             const userUrl = `${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}`;
             const qrBox = document.getElementById('qrcode-box');
             qrBox.innerHTML = ''; 
@@ -413,9 +488,9 @@
             new QRCode(qrBox, { text: userUrl, width: 200, height: 200, colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H });
         }
 
-        function copyFocusLink(qid) {
-            const url = `${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}&admin=1&focus=${qid}`;
-            navigator.clipboard.writeText(url).then(() => { showToast('已复制投屏链接'); });
+        function copyPresenterLink() {
+            const url = `${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}&presenter=1`;
+            navigator.clipboard.writeText(url).then(() => { showToast('已复制演示端链接 (给投屏电脑用)'); });
         }
 
         function startNewSession() {
@@ -456,6 +531,8 @@
             
             if(!state.pageId) state.pageId = Date.now().toString();
 
+            // 如果是编辑模式，更新 activeId 等状态
+            // saveToCloud 有时候被 setActive 调用，此时不需要读取输入框
             if(refresh) {
                 if(!title || opts.length < 1) return alert('请填写问题和至少一个选项');
 
@@ -473,8 +550,13 @@
             }
 
             document.getElementById('loading').style.display = 'flex';
+            // 重要：将 activeId 也保存到数据库
             const { error } = await db.from('quizzes').upsert({
-                id: state.pageId, title: 'Vote '+state.pageId, content: state.data.questions, votes: state.data.votes
+                id: state.pageId, 
+                title: 'Vote '+state.pageId, 
+                content: state.data.questions, 
+                votes: state.data.votes,
+                activeId: state.activeId // 新增字段
             });
             document.getElementById('loading').style.display = 'none';
             if(!error && refresh) {
@@ -493,14 +575,12 @@
             await saveToCloud(false); 
         }
 
-        // === 提交投票逻辑：移除所有Loading操作 ===
         async function submitVote(qid) {
             let sels = state.temp[qid];
             if(sels === undefined) sels = getMyVotes(qid);
 
             showToast('提交中...');
             
-            // 准备数据
             const { data: latest } = await db.from('quizzes').select('votes').eq('id', state.pageId).single();
             let cloudVotes = latest?.votes || state.data.votes || {};
             if(!cloudVotes[qid]) cloudVotes[qid] = {};
@@ -516,7 +596,6 @@
                 if(!cloudVotes[qid][opt].includes(state.user)) cloudVotes[qid][opt].push(state.user);
             });
 
-            // 发送请求 (不操作 loading 遮罩)
             const { error } = await db.from('quizzes').update({ votes: cloudVotes }).eq('id', state.pageId);
             
             if(!error) { 
@@ -540,8 +619,28 @@
             if(confirm('确定删除这道题吗？')) { 
                 state.data.questions = state.data.questions.filter(q=>q.id!==qid); 
                 delete state.data.votes[qid]; 
+                // 如果删除的是当前激活的题目，重置 activeId
+                if (state.activeId === qid) state.activeId = null;
                 await saveToCloud(false); 
             }
+        }
+
+        function generateTestData() {
+            if(!confirm('⚠️ 确定生成测试数据吗？\n这将清除当前页面显示的内容（仅本地预览）。')) return;
+            const q1_id = 'test_70_stress';
+            const q2_id = 'test_6x20_layout';
+            state.data.questions = [
+                { id: q1_id, title: '🔥 压力测试：单选项70人堆积', options: ['超级热门', '冷门陪跑'] },
+                { id: q2_id, title: '📊 布局测试：6列 x 20人均衡', options: ['方案A', '方案B', '方案C', '方案D', '方案E', '方案F'] }
+            ];
+            state.data.votes = {};
+            state.data.votes[q1_id] = { '超级热门': Array.from({length: 70}, (_, i) => `观众${i+1}`), '冷门陪跑': ['孤勇者'] };
+            state.data.votes[q2_id] = {};
+            ['方案A', '方案B', '方案C', '方案D', '方案E', '方案F'].forEach((opt, idx) => {
+                state.data.votes[q2_id][opt] = Array.from({length: 20}, (_, i) => `校友${idx*20 + i + 1}`);
+            });
+            render();
+            showToast('测试数据已生成 (仅本地)');
         }
         
         function toggle(qid, opt) {
