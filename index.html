@@ -1,11 +1,13 @@
-<!-- START OF FILE index (18).html -->
+<!-- START OF FILE index (19).html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>互动投票</title>
+    <!-- 引入 Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <!-- 引入 QRCode -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         /* === 样式表 === */
@@ -34,42 +36,39 @@
         .btn-sm { font-size: 12px; padding: 5px 10px; }
         .input { width: 100%; padding: 14px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 16px; outline: none; }
 
-        /* === 关键修改：看板布局 === */
+        /* 看板布局 */
         .board-container { 
             display: grid; 
-            gap: 25px; /* 增加列间距，拉开距离 */
+            gap: 25px; /* 列间距 */
             padding-bottom: 10px; 
             align-items: start; 
             overflow-x: auto; 
-            height: 100%; /* 占满高度 */
+            height: 100%; 
         }
 
         .board-col { 
             min-width: 0;
-            /* 移除原来的灰色背景，让名字显示在方框下方 */
             background: transparent; 
             padding: 0; 
             display: flex; 
             flex-direction: column; 
             transition: all 0.3s; 
-            height: 100%; /* 让列占满高度，以便分配8行 */
+            height: 100%; 
         }
 
-        /* === 关键修改：选项标题框 (固定大小) === */
+        /* 选项标题框 (固定大小) */
         .col-header { 
             margin-bottom: 10px; 
             text-align: center; 
-            /* 变成固定的灰色方框 */
             background: #eef0f2;
             border-top: 6px solid #ccc;
             border-radius: 8px;
-            /* 固定高度 */
-            height: 80px; 
+            height: 80px; /* 固定高度 */
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            flex-shrink: 0; /* 防止被压缩 */
+            flex-shrink: 0; 
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
         
@@ -82,45 +81,37 @@
         .col-title { font-size: 18px; font-weight: 800; color: #333; margin-bottom: 2px; line-height: 1.1; padding: 0 5px; overflow: hidden; }
         .col-count { font-size: 20px; font-weight: 900; color: var(--primary); opacity: 0.6; }
         
-        /* === 关键修改：名字列表 (严格8行) === */
+        /* 名字列表 (严格8行) */
         .voter-list { 
             display: grid;
-            /* 强制将剩余高度平分为8行 */
-            grid-template-rows: repeat(8, 1fr);
-            /* 列宽自动，先填满纵向8个，再往右加列 */
-            grid-auto-flow: column; 
-            column-gap: 8px; /* 名字横向间距 */
-            row-gap: 6px;    /* 名字纵向间距 */
-            overflow-x: auto; /* 允许横向滚动 */
+            grid-template-rows: repeat(8, 1fr); /* 强制8行 */
+            grid-auto-flow: column; /* 超出往右排 */
+            column-gap: 8px; 
+            row-gap: 6px;    
+            overflow-x: auto; 
             padding-bottom: 5px;
-            /* 占满剩余高度 */
             flex: 1; 
             align-content: start;
         }
 
         .name-card { 
             background: white; 
-            padding: 0 4px; /* 减小内边距 */
+            padding: 0 4px; 
             border-radius: 4px; 
             font-weight: 600; 
             text-align: center; 
-            /* 加上淡边框代替阴影，看起来更整洁 */
             border: 1px solid #eee;
             animation: popIn 0.4s; 
             color: #444; 
-            
             width: 100%; 
             min-width: 60px; 
             white-space: nowrap; 
             overflow: hidden;
             text-overflow: ellipsis; 
-            
-            /* 垂直居中名字 */
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 100%; /* 撑满各自的格子 */
-
+            height: 100%; 
             font-size: clamp(10px, 1.1vw, 13px); 
         }
         
@@ -132,7 +123,7 @@
         .active-question-card { border: 2px solid var(--active-border); position: relative; }
         .active-question-card::after { content: "正在进行"; position: absolute; top: -12px; right: 20px; background: var(--active-border); color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: bold; }
 
-        /* === 演示端 (Presenter) 专用布局 === */
+        /* 演示端 (Presenter) 布局 */
         .presenter-layout {
             display: flex;
             flex-direction: column;
@@ -142,33 +133,14 @@
             background: white;
             overflow: hidden; 
         }
-        .presenter-header {
-            flex: 0 0 auto;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        .presenter-title {
-            font-size: 3vw;
-            font-weight: 900;
-            line-height: 1.2;
-            margin: 0;
-            color: #222;
-        }
-        .presenter-body {
-            flex: 1 1 auto;
-            overflow: hidden; 
-            display: flex; 
-            flex-direction: column;
-        }
-        .presenter-layout .board-container {
-            height: 100%;
-            width: 100%;
-        }
+        .presenter-header { flex: 0 0 auto; margin-bottom: 20px; text-align: center; }
+        .presenter-title { font-size: 3vw; font-weight: 900; line-height: 1.2; margin: 0; color: #222; }
+        .presenter-body { flex: 1 1 auto; overflow: hidden; display: flex; flex-direction: column; }
+        .presenter-layout .board-container { height: 100%; width: 100%; }
 
         body.focus-mode .navbar { display: none; }
         body.focus-mode .container { padding: 0; max-width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; } 
         body.focus-mode .container:has(.presenter-layout) { display: block; padding: 0; }
-        
         body.focus-mode #admin-box { display: none !important; } 
         body.focus-mode .user-card { display: none; }
         
@@ -186,9 +158,11 @@
 <body>
 
     <div id="loading">
-        <div style="font-weight:bold; color:#555;">连接投票服务器...</div>
+        <div style="font-weight:bold; color:#555;">正在连接服务器...</div>
+        <div style="font-size:12px; color:#999; margin-top:10px;">如果长时间未响应，请刷新页面</div>
     </div>
 
+    <!-- 登录弹窗 -->
     <div id="login-modal" class="modal" style="display:flex; z-index:2500;">
         <div class="modal-box" style="text-align:center;">
             <h2 style="margin-bottom:20px;">👋 欢迎参与</h2>
@@ -281,9 +255,16 @@
         };
 
         window.onload = function() {
+            // === 修复：检查 Supabase 是否加载成功 ===
+            if (typeof supabase === 'undefined') {
+                document.getElementById('loading').innerHTML = '<div style="color:red; font-weight:bold;">网络资源加载失败</div><div style="margin-top:10px;">请检查网络或<a href="javascript:location.reload()">刷新页面</a></div>';
+                return;
+            }
+
             const { createClient } = supabase;
             db = createClient(MEMFIRE_URL, MEMFIRE_KEY);
             
+            // 全局错误拦截
             window.onerror = function(msg, url, line) {
                 console.error("Global Error Caught:", msg);
                 document.getElementById('loading').style.display = 'none';
@@ -292,20 +273,17 @@
             
             if (state.role === 'presenter') {
                 document.body.classList.add('focus-mode');
-                document.getElementById('loading').style.display = 'none'; 
-                document.getElementById('login-modal').style.display = 'none';
+                hideLoadingAndModal();
                 state.user = 'Presenter';
                 initApp();
             }
             else if (state.role === 'admin') {
-                document.getElementById('loading').style.display = 'none'; 
-                document.getElementById('login-modal').style.display = 'none';
+                hideLoadingAndModal();
                 state.user = 'Admin';
                 initApp();
             }
             else if(state.user) {
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('login-modal').style.display = 'none';
+                hideLoadingAndModal();
                 initApp();
             } 
             else {
@@ -313,6 +291,11 @@
                 document.getElementById('login-modal').style.display = 'flex';
             }
         };
+        
+        function hideLoadingAndModal() {
+            document.getElementById('loading').style.display = 'none'; 
+            document.getElementById('login-modal').style.display = 'none';
+        }
 
         function handleLogin() {
             const nameInput = document.getElementById('username');
@@ -321,7 +304,13 @@
             
             state.user = name;
             localStorage.setItem('wx_vote_user_final', name);
+            
+            // === 修复：确保 Login 弹窗真正关闭，并尝试启动 App ===
             document.getElementById('login-modal').style.display = 'none';
+            // 显示 Loading 提示正在加载数据
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('loading').innerHTML = '<div style="color:#555;">正在获取题目...</div>';
+            
             initApp();
         }
 
@@ -333,23 +322,39 @@
                 document.getElementById('admin-box').style.display = 'block';
             }
 
-            if(state.pageId) { await loadData(); setupRealtime(); }
-            else {
+            // === 修复：增加容错 ===
+            if(state.pageId) { 
+                await loadData(); 
+                setupRealtime(); 
+            } else {
                 document.getElementById('loading').style.display = 'none';
-                if(state.role === 'user') document.getElementById('quiz-list').innerHTML = '<div style="text-align:center;margin-top:50px;color:#999">暂无活动</div>';
+                if(state.role === 'user') renderEmptyState();
             }
+        }
+        
+        function renderEmptyState() {
+             const box = document.getElementById('quiz-list');
+             box.innerHTML = '<div style="text-align:center;margin-top:50px;color:#999">暂无活动或需等待管理员开启</div>';
         }
 
         async function loadData() {
             try {
-                const { data } = await db.from('quizzes').select('*').eq('id', state.pageId).single();
-                if(data) updateUI(data);
-            } catch(e) { console.error(e); }
+                if (!db) throw new Error("DB not initialized");
+                const { data, error } = await db.from('quizzes').select('*').eq('id', state.pageId).single();
+                
+                if (error) throw error;
+                if (data) updateUI(data);
+                
+            } catch(e) { 
+                console.error("Load Data Error:", e);
+                // 即使出错也尝试渲染（可能渲染为空），防止白屏
+                render(); 
+            }
             document.getElementById('loading').style.display = 'none';
         }
 
         function setupRealtime() {
-            if(realtimeSub) return;
+            if(realtimeSub || !db) return;
             realtimeSub = db.channel('room_' + state.pageId)
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'quizzes', filter: 'id=eq.' + state.pageId }, 
                 (payload) => { 
@@ -387,7 +392,10 @@
             const box = document.getElementById('quiz-list');
             let html = '';
 
-            if (!state.data || !state.data.questions) return;
+            if (!state.data || !state.data.questions) {
+                renderEmptyState();
+                return;
+            }
 
             let questionsToRender = [];
 
@@ -414,11 +422,9 @@
                 const isPresenter = state.role === 'presenter';
                 const qVotes = (state.data.votes && state.data.votes[q.id]) ? state.data.votes[q.id] : {};
                 
-                // === Admin 视图 (普通布局) ===
                 if (isAdmin) {
                     const isActive = !!q.active;
                     const activeClass = isActive ? 'active-question-card' : '';
-                    
                     let columnsHtml = '';
                     if (q.options && Array.isArray(q.options)) {
                         q.options.forEach(opt => {
@@ -428,13 +434,10 @@
                             columnsHtml += `<div class="board-col"><div class="col-header"><div class="col-title">${opt}</div><div class="col-count">${count}</div></div><div class="voter-list">${namesHtml}</div></div>`;
                         });
                     }
-
                     const showUp = index > 0;
                     const showDown = index < state.data.questions.length - 1;
-                    
                     const playBtnText = isActive ? '⏸️ 停止' : '▶️ 播放';
                     const playBtnClass = isActive ? 'btn-danger' : 'btn-success';
-
                     const headerTools = `
                     <div style="display:flex; gap:10px; align-items:center;">
                         <button onclick="setActive('${q.id}')" class="btn btn-sm ${playBtnClass}">${playBtnText}</button>
@@ -444,20 +447,10 @@
                         <button onclick="editQ('${q.id}')" class="btn btn-sm btn-info">修改</button>
                         <button onclick="delQ('${q.id}')" class="btn btn-sm btn-danger">删除</button>
                     </div>`;
-
                     const colCount = q.options ? Math.min(q.options.length, 4) : 1;
                     const gridStyle = `grid-template-columns: repeat(${colCount}, 1fr);`;
-                    
-                    html += `
-                    <div class="${activeClass}" style="margin-bottom:40px; padding:15px; border-radius:12px; background:white;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-                            <h2 style="font-size:20px;">${q.title}</h2>
-                            ${headerTools}
-                        </div>
-                        <div class="board-container" style="${gridStyle}">${columnsHtml}</div>
-                    </div>`;
+                    html += `<div class="${activeClass}" style="margin-bottom:40px; padding:15px; border-radius:12px; background:white;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 style="font-size:20px;">${q.title}</h2>${headerTools}</div><div class="board-container" style="${gridStyle}">${columnsHtml}</div></div>`;
                 }
-                // === Presenter 视图 (PPT 样式 + 新看板样式) ===
                 else if (isPresenter) {
                     let columnsHtml = '';
                     if (q.options && Array.isArray(q.options)) {
@@ -470,18 +463,8 @@
                     }
                     const colCount = q.options ? Math.min(q.options.length, 4) : 1;
                     const gridStyle = `grid-template-columns: repeat(${colCount}, 1fr);`;
-                    
-                    html += `
-                    <div class="presenter-layout">
-                        <div class="presenter-header">
-                            <h1 class="presenter-title">${q.title}</h1>
-                        </div>
-                        <div class="presenter-body">
-                            <div class="board-container" style="${gridStyle}">${columnsHtml}</div>
-                        </div>
-                    </div>`;
+                    html += `<div class="presenter-layout"><div class="presenter-header"><h1 class="presenter-title">${q.title}</h1></div><div class="presenter-body"><div class="board-container" style="${gridStyle}">${columnsHtml}</div></div></div>`;
                 } 
-                // === User 视图 ===
                 else {
                     const myVotes = getMyVotes(q.id);
                     let opts = '';
@@ -569,6 +552,8 @@
             }
 
             document.getElementById('loading').style.display = 'flex';
+            if (!db) { showToast('数据库未连接'); return; }
+
             const { error } = await db.from('quizzes').upsert({
                 id: state.pageId, 
                 title: 'Vote '+state.pageId, 
@@ -598,7 +583,11 @@
 
             showToast('提交中...');
             
-            const { data: latest } = await db.from('quizzes').select('votes').eq('id', state.pageId).single();
+            if (!db) { showToast('连接断开，请刷新'); return; }
+
+            const { data: latest, error: fetchErr } = await db.from('quizzes').select('votes').eq('id', state.pageId).single();
+            if (fetchErr) { showToast('同步失败'); return; }
+
             let cloudVotes = latest?.votes || state.data.votes || {};
             if(!cloudVotes[qid]) cloudVotes[qid] = {};
             
@@ -652,3 +641,21 @@
         }
         function showAuth() { document.getElementById('auth-modal').style.display = 'flex'; }
         function checkAuth() {
+            if(document.getElementById('pwd').value === 'admin123') {
+                state.role = 'admin'; document.getElementById('admin-box').style.display = 'block';
+                closeModal('auth-modal'); render();
+            } else showToast('密码错误');
+        }
+        function addOptLine(value = '') {
+            const i = document.createElement('input'); 
+            i.className = 'input opt-input'; 
+            i.style.marginBottom='8px'; 
+            i.placeholder='选项内容';
+            i.value = value;
+            document.getElementById('q-opts').appendChild(i);
+        }
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+        function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.style.display='block'; setTimeout(()=>t.style.display='none',2000); }
+    </script>
+</body>
+</html>
