@@ -1,13 +1,11 @@
-<!-- START OF FILE index (19).html -->
+<!-- START OF FILE index (20).html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>互动投票</title>
-    <!-- 引入 Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-    <!-- 引入 QRCode -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         /* === 样式表 === */
@@ -39,7 +37,7 @@
         /* 看板布局 */
         .board-container { 
             display: grid; 
-            gap: 25px; /* 列间距 */
+            gap: 25px; 
             padding-bottom: 10px; 
             align-items: start; 
             overflow-x: auto; 
@@ -56,14 +54,17 @@
             height: 100%; 
         }
 
-        /* 选项标题框 (固定大小) */
+        /* === 修复点2：选项标题框 (自动高度，保证显示) === */
         .col-header { 
             margin-bottom: 10px; 
             text-align: center; 
             background: #eef0f2;
             border-top: 6px solid #ccc;
             border-radius: 8px;
-            height: 80px; /* 固定高度 */
+            /* 改为最小高度，允许撑开 */
+            min-height: 80px; 
+            height: auto; 
+            padding: 10px 5px; /* 增加内边距防止文字贴边 */
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -78,14 +79,24 @@
         .board-col:nth-child(5n+4) .col-header { border-top-color: var(--c4); }
         .board-col:nth-child(5n+5) .col-header { border-top-color: var(--c5); }
 
-        .col-title { font-size: 18px; font-weight: 800; color: #333; margin-bottom: 2px; line-height: 1.1; padding: 0 5px; overflow: hidden; }
+        .col-title { 
+            font-size: 18px; 
+            font-weight: 800; 
+            color: #333; 
+            margin-bottom: 4px; 
+            line-height: 1.3; 
+            /* 允许换行，显示全部内容 */
+            white-space: normal; 
+            word-wrap: break-word;
+            overflow: visible; 
+        }
         .col-count { font-size: 20px; font-weight: 900; color: var(--primary); opacity: 0.6; }
         
         /* 名字列表 (严格8行) */
         .voter-list { 
             display: grid;
-            grid-template-rows: repeat(8, 1fr); /* 强制8行 */
-            grid-auto-flow: column; /* 超出往右排 */
+            grid-template-rows: repeat(8, 1fr); 
+            grid-auto-flow: column; 
             column-gap: 8px; 
             row-gap: 6px;    
             overflow-x: auto; 
@@ -167,13 +178,10 @@
         <div class="modal-box" style="text-align:center;">
             <h2 style="margin-bottom:20px;">👋 欢迎参与</h2>
             <p style="color:#666; margin-bottom:15px; font-size:14px;">请输入您的名字以便统计</p>
-            
             <input type="text" id="username" class="input" placeholder="您的名字" style="text-align:center; margin-bottom:10px;">
-            
             <div style="font-size:12px; color:#999; margin-bottom:20px; background:#f9f9f9; padding:6px; border-radius:6px;">
                 示例：Tobias Guo
             </div>
-
             <button onclick="handleLogin()" class="btn btn-primary" style="width:100%">进入投票</button>
         </div>
     </div>
@@ -187,7 +195,6 @@
     </div>
 
     <div class="container" id="app" style="display:none;">
-        
         <div id="admin-box" style="display:none; background:#333; color:white; padding:15px; border-radius:12px; margin-bottom:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-weight:bold;">🔴 总控台</span>
@@ -200,7 +207,6 @@
                 </div>
             </div>
         </div>
-
         <div id="quiz-list"></div>
     </div>
 
@@ -255,7 +261,6 @@
         };
 
         window.onload = function() {
-            // === 修复：检查 Supabase 是否加载成功 ===
             if (typeof supabase === 'undefined') {
                 document.getElementById('loading').innerHTML = '<div style="color:red; font-weight:bold;">网络资源加载失败</div><div style="margin-top:10px;">请检查网络或<a href="javascript:location.reload()">刷新页面</a></div>';
                 return;
@@ -264,7 +269,6 @@
             const { createClient } = supabase;
             db = createClient(MEMFIRE_URL, MEMFIRE_KEY);
             
-            // 全局错误拦截
             window.onerror = function(msg, url, line) {
                 console.error("Global Error Caught:", msg);
                 document.getElementById('loading').style.display = 'none';
@@ -297,6 +301,7 @@
             document.getElementById('login-modal').style.display = 'none';
         }
 
+        // === 修复点1：点击登录直接进入，不等待异步加载 ===
         function handleLogin() {
             const nameInput = document.getElementById('username');
             let name = nameInput.value.trim();
@@ -305,12 +310,12 @@
             state.user = name;
             localStorage.setItem('wx_vote_user_final', name);
             
-            // === 修复：确保 Login 弹窗真正关闭，并尝试启动 App ===
+            // 立即关闭弹窗，显示UI，防止卡死
             document.getElementById('login-modal').style.display = 'none';
-            // 显示 Loading 提示正在加载数据
-            document.getElementById('loading').style.display = 'flex';
-            document.getElementById('loading').innerHTML = '<div style="color:#555;">正在获取题目...</div>';
+            document.getElementById('app').style.display = 'block';
+            document.getElementById('u-name').textContent = state.user;
             
+            // 后台加载数据
             initApp();
         }
 
@@ -322,12 +327,10 @@
                 document.getElementById('admin-box').style.display = 'block';
             }
 
-            // === 修复：增加容错 ===
             if(state.pageId) { 
                 await loadData(); 
                 setupRealtime(); 
             } else {
-                document.getElementById('loading').style.display = 'none';
                 if(state.role === 'user') renderEmptyState();
             }
         }
@@ -339,18 +342,12 @@
 
         async function loadData() {
             try {
-                if (!db) throw new Error("DB not initialized");
+                if (!db) return;
                 const { data, error } = await db.from('quizzes').select('*').eq('id', state.pageId).single();
-                
-                if (error) throw error;
                 if (data) updateUI(data);
-                
             } catch(e) { 
-                console.error("Load Data Error:", e);
-                // 即使出错也尝试渲染（可能渲染为空），防止白屏
                 render(); 
             }
-            document.getElementById('loading').style.display = 'none';
         }
 
         function setupRealtime() {
@@ -367,15 +364,9 @@
 
         function updateUI(serverData) {
             if (!serverData) return;
-            
             state.data.questions = serverData.content || state.data.questions || [];
             state.data.votes = serverData.votes || state.data.votes || {};
-            
-            try {
-                render();
-            } catch(e) {
-                console.error("UI Render Error:", e);
-            }
+            try { render(); } catch(e) {}
         }
 
         async function setActive(qid) {
@@ -392,18 +383,13 @@
             const box = document.getElementById('quiz-list');
             let html = '';
 
-            if (!state.data || !state.data.questions) {
-                renderEmptyState();
-                return;
-            }
+            if (!state.data || !state.data.questions) { renderEmptyState(); return; }
 
             let questionsToRender = [];
-
             if (state.role === 'admin') {
                 questionsToRender = state.data.questions;
             } else {
                 questionsToRender = state.data.questions.filter(q => q.active === true);
-                
                 if (questionsToRender.length === 0) {
                     box.innerHTML = '<div style="text-align:center;margin-top:30%;color:#999;font-size:20px;">⏳ 等待管理员开启题目...</div>';
                     return;
@@ -551,7 +537,7 @@
                 }
             }
 
-            document.getElementById('loading').style.display = 'flex';
+            // 非关键路径不显示 Loading
             if (!db) { showToast('数据库未连接'); return; }
 
             const { error } = await db.from('quizzes').upsert({
@@ -560,7 +546,6 @@
                 content: state.data.questions, 
                 votes: state.data.votes
             });
-            document.getElementById('loading').style.display = 'none';
             if(!error && refresh) {
                 if(!location.search.includes('id=')) location.href = '?id=' + state.pageId + '&admin=1';
                 else { closeModal('edit-modal'); render(); showToast('保存成功'); }
