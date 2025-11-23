@@ -1,4 +1,4 @@
-<!-- START OF FILE index (14).html -->
+<!-- START OF FILE index (15).html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -26,7 +26,7 @@
         
         .btn { padding: 8px 12px; border-radius: 6px; border: none; font-weight: 700; cursor: pointer; transition: 0.2s; font-size: 14px; }
         .btn-primary { background: #222; color: white; }
-        .btn-success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; } /* 绿色激活按钮 */
+        .btn-success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; } 
         .btn-danger { background: #ffebee; color: #d32f2f; border: 1px solid #ffcdd2; }
         .btn-info { background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; }
         .btn-ghost { background: transparent; color: #666; }
@@ -152,7 +152,6 @@
         <div class="modal-box" style="text-align:center;">
             <h2 style="margin-bottom:20px;">👋 欢迎参与</h2>
             <p style="color:#666; margin-bottom:15px; font-size:14px;">请输入您的名字以便统计</p>
-            <!-- 修改：Placeholder 显示 Tobias Guo -->
             <input type="text" id="username" class="input" placeholder="Tobias Guo" style="text-align:center; margin-bottom:20px;">
             <button onclick="handleLogin()" class="btn btn-primary" style="width:100%">进入投票</button>
         </div>
@@ -173,7 +172,6 @@
                 <span style="font-weight:bold;">🔴 总控台</span>
                 <div style="display:flex; gap:10px;">
                     <button onclick="startNewSession()" class="btn" style="background:#fff; color:#333; font-weight:800;">🚀 新场次</button>
-                    <!-- 新增：Presenter 链接复制按钮 -->
                     <button onclick="copyPresenterLink()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📺 演示端</button>
                     <button onclick="generateTestData()" class="btn" style="background:rgba(100,255,100,0.2); color:#a5d6a7;">🧪 测试</button>
                     <button onclick="openAddModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">+ 新题</button>
@@ -202,7 +200,6 @@
     <div id="auth-modal" class="modal">
         <div class="modal-box" style="text-align:center;">
             <h3>管理员模式</h3><br>
-            <!-- 修改：移除密码提示 -->
             <input type="password" id="pwd" class="input" placeholder="请输入密码" style="text-align:center; margin-bottom:20px;">
             <button onclick="checkAuth()" class="btn btn-primary" style="width:100%">确认</button>
             <button onclick="closeModal('auth-modal')" class="btn btn-ghost" style="margin-top:10px;">取消</button>
@@ -230,13 +227,9 @@
         
         let state = {
             user: localStorage.getItem('wx_vote_user_final') || '', 
-            // 角色判断逻辑：
-            // admin=1 -> 管理员 (Admin)
-            // presenter=1 -> 演示者 (Presenter)
-            // 其他 -> 普通用户 (User)
             role: urlParams.get('admin') === '1' ? 'admin' : (urlParams.get('presenter') === '1' ? 'presenter' : 'user'),
             pageId: urlParams.get('id'),
-            activeId: null, // 当前激活的题目ID
+            // activeId 已移除，直接使用题目数据中的 active 属性
             data: { questions: [], votes: {} },
             temp: {},
             editingId: null
@@ -252,28 +245,24 @@
                 return false;
             };
             
-            // Presenter 模式也启用专注样式
             if (state.role === 'presenter') {
                 document.body.classList.add('focus-mode');
                 document.getElementById('loading').style.display = 'none'; 
                 document.getElementById('login-modal').style.display = 'none';
-                state.user = 'Presenter'; // 虚拟名
+                state.user = 'Presenter';
                 initApp();
             }
-            // Admin 无需登录
             else if (state.role === 'admin') {
                 document.getElementById('loading').style.display = 'none'; 
                 document.getElementById('login-modal').style.display = 'none';
                 state.user = 'Admin';
                 initApp();
             }
-            // User 有缓存
             else if(state.user) {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('login-modal').style.display = 'none';
                 initApp();
             } 
-            // User 无缓存 -> 登录
             else {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('login-modal').style.display = 'flex';
@@ -281,8 +270,13 @@
         };
 
         function handleLogin() {
-            const name = document.getElementById('username').value.trim();
-            if(!name) return showToast('请输入您的名字');
+            const nameInput = document.getElementById('username');
+            // 如果用户没填，默认使用 Placeholder
+            let name = nameInput.value.trim();
+            if(!name) {
+                if(nameInput.placeholder) name = nameInput.placeholder;
+                else return showToast('请输入您的名字');
+            }
             state.user = name;
             localStorage.setItem('wx_vote_user_final', name);
             document.getElementById('login-modal').style.display = 'none';
@@ -293,7 +287,6 @@
             document.getElementById('app').style.display = 'block';
             document.getElementById('u-name').textContent = state.user;
             
-            // 只有 Admin 显示总控台
             if(state.role === 'admin') {
                 document.getElementById('admin-box').style.display = 'block';
             }
@@ -330,8 +323,6 @@
             
             state.data.questions = serverData.content || state.data.questions || [];
             state.data.votes = serverData.votes || state.data.votes || {};
-            // 读取服务器保存的 activeId
-            state.activeId = serverData.activeId || null;
             
             try {
                 render();
@@ -340,16 +331,25 @@
             }
         }
 
-        // === 核心逻辑：设置当前激活题目 ===
+        // === 核心修复：将 active 状态存入 content JSON 字段中 ===
         async function setActive(qid) {
-            // 如果已经激活，再次点击则取消激活（暂停）
-            if (state.activeId === qid) {
-                state.activeId = null;
-            } else {
-                state.activeId = qid;
-            }
-            render(); // 本地先更新 UI
-            await saveToCloud(false); // 保存状态到服务器
+            // 找到当前点击的题目
+            const targetQ = state.data.questions.find(i => i.id === qid);
+            if (!targetQ) return;
+
+            // 如果它已经是激活的，则取消激活（暂停），否则激活它
+            const willBeActive = !targetQ.active;
+
+            // 重置所有题目为非激活
+            state.data.questions.forEach(item => item.active = false);
+
+            // 设置目标题目
+            targetQ.active = willBeActive;
+
+            // 先更新本地
+            render();
+            // 保存到云端 (content 字段)
+            await saveToCloud(false); 
         }
 
         function render() {
@@ -362,23 +362,19 @@
             let questionsToRender = [];
 
             if (state.role === 'admin') {
-                // 管理员可以看到所有题目，以便进行选择
                 questionsToRender = state.data.questions;
             } else {
-                // 普通用户 和 Presenter 只能看到当前激活的题目
-                if (state.activeId) {
-                    questionsToRender = state.data.questions.filter(q => q.id === state.activeId);
-                } else {
-                    // 如果没有激活题目，显示等待提示
+                // 普通用户/Presenter 查找 active=true 的题目
+                questionsToRender = state.data.questions.filter(q => q.active === true);
+                
+                if (questionsToRender.length === 0) {
                     box.innerHTML = '<div style="text-align:center;margin-top:30%;color:#999;font-size:20px;">⏳ 等待管理员开启题目...</div>';
                     return;
                 }
             }
 
-            if(questionsToRender.length === 0) {
-                 if (state.role === 'admin') {
-                     box.innerHTML = '<div style="text-align:center;margin-top:50px;color:#999">点击“+ 新题”添加内容</div>';
-                 } 
+            if(questionsToRender.length === 0 && state.role === 'admin') {
+                 box.innerHTML = '<div style="text-align:center;margin-top:50px;color:#999">点击“+ 新题”添加内容</div>';
                  return;
             }
 
@@ -391,8 +387,7 @@
                 
                 // === Admin 视图 ===
                 if (isAdmin) {
-                    // 检查是否是当前激活的题目
-                    const isActive = state.activeId === q.id;
+                    const isActive = !!q.active;
                     const activeClass = isActive ? 'active-question-card' : '';
                     
                     let columnsHtml = '';
@@ -400,7 +395,6 @@
                         q.options.forEach(opt => {
                             const voters = qVotes[opt] || []; 
                             const count = voters.length;
-                            // Admin 视图稍微简化显示名字，避免卡顿，重点是控制
                             let namesHtml = voters.map(n => `<div class="name-card">${n}</div>`).join('');
                             columnsHtml += `<div class="board-col"><div class="col-header"><div class="col-title">${opt}</div><div class="col-count">${count}</div></div><div class="voter-list">${namesHtml}</div></div>`;
                         });
@@ -409,14 +403,13 @@
                     const showUp = index > 0;
                     const showDown = index < state.data.questions.length - 1;
                     
-                    // 播放按钮状态
                     const playBtnText = isActive ? '⏸️ 停止' : '▶️ 播放';
                     const playBtnClass = isActive ? 'btn-danger' : 'btn-success';
 
                     const headerTools = `
                     <div style="display:flex; gap:10px; align-items:center;">
                         <button onclick="setActive('${q.id}')" class="btn btn-sm ${playBtnClass}">${playBtnText}</button>
-                        <div style="width:10px;"></div> <!-- Spacer -->
+                        <div style="width:10px;"></div>
                         ${showUp ? `<button onclick="moveQ(${index}, -1)" class="btn btn-sm btn-ghost">⬆️</button>` : ''}
                         ${showDown ? `<button onclick="moveQ(${index}, 1)" class="btn btn-sm btn-ghost">⬇️</button>` : ''}
                         <button onclick="editQ('${q.id}')" class="btn btn-sm btn-info">修改</button>
@@ -426,7 +419,6 @@
                     const colCount = q.options ? Math.min(q.options.length, 4) : 1;
                     const gridStyle = `grid-template-columns: repeat(${colCount}, 1fr);`;
                     
-                    // 将 Admin 内容包裹在 div 中，如果激活了加上 activeClass 边框
                     html += `
                     <div class="${activeClass}" style="margin-bottom:40px; padding:15px; border-radius:12px; background:white;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
@@ -480,7 +472,6 @@
         }
 
         function showQRCodeModal() {
-            // 普通用户链接 (无参数)
             const userUrl = `${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}`;
             const qrBox = document.getElementById('qrcode-box');
             qrBox.innerHTML = ''; 
@@ -531,8 +522,6 @@
             
             if(!state.pageId) state.pageId = Date.now().toString();
 
-            // 如果是编辑模式，更新 activeId 等状态
-            // saveToCloud 有时候被 setActive 调用，此时不需要读取输入框
             if(refresh) {
                 if(!title || opts.length < 1) return alert('请填写问题和至少一个选项');
 
@@ -550,13 +539,12 @@
             }
 
             document.getElementById('loading').style.display = 'flex';
-            // 重要：将 activeId 也保存到数据库
+            // 使用 content 字段存储所有数据，包括 active 状态
             const { error } = await db.from('quizzes').upsert({
                 id: state.pageId, 
                 title: 'Vote '+state.pageId, 
                 content: state.data.questions, 
-                votes: state.data.votes,
-                activeId: state.activeId // 新增字段
+                votes: state.data.votes
             });
             document.getElementById('loading').style.display = 'none';
             if(!error && refresh) {
@@ -619,8 +607,6 @@
             if(confirm('确定删除这道题吗？')) { 
                 state.data.questions = state.data.questions.filter(q=>q.id!==qid); 
                 delete state.data.votes[qid]; 
-                // 如果删除的是当前激活的题目，重置 activeId
-                if (state.activeId === qid) state.activeId = null;
                 await saveToCloud(false); 
             }
         }
