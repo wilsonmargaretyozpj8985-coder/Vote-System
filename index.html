@@ -1,4 +1,4 @@
-<!-- START OF FILE index (22).html -->
+<!-- START OF FILE index (23).html -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -7,6 +7,10 @@
     <title>互动投票</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- 新增：PDF导出相关库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
     <style>
         /* === 样式表 === */
         :root {
@@ -70,7 +74,7 @@
             align-items: center;
             flex-shrink: 0; 
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            transition: height 0.2s ease; /* 平滑过渡 */
+            transition: height 0.2s ease; 
         }
         
         .board-col:nth-child(5n+1) .col-header { border-top-color: var(--c1); }
@@ -86,13 +90,13 @@
             margin-bottom: 5px; 
             line-height: 1.3; 
             white-space: pre-wrap; 
-            word-break: break-word; /* 保证长文字换行 */
+            word-break: break-word; 
         }
         .col-count { font-size: 20px; font-weight: 900; color: var(--primary); opacity: 0.6; }
         
         /* 名字列表 (严格8行) */
         .voter-list { 
-            margin-top: 15px; /* 拉开与方框的距离 */
+            margin-top: 15px; 
             display: grid;
             grid-template-rows: repeat(8, 1fr); 
             grid-auto-flow: column; 
@@ -197,12 +201,15 @@
         <div id="admin-box" style="display:none; background:#333; color:white; padding:15px; border-radius:12px; margin-bottom:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-weight:bold;">🔴 总控台</span>
-                <div style="display:flex; gap:10px;">
+                <div style="display:flex; gap:10px; flex-wrap: wrap; justify-content: flex-end;">
                     <button onclick="startNewSession()" class="btn" style="background:#fff; color:#333; font-weight:800;">🚀 新场次</button>
                     <button onclick="copyPresenterLink()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📺 演示端</button>
                     <button onclick="openAddModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">+ 新题</button>
                     <button onclick="showQRCodeModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📱 二维码</button>
                     <button onclick="clearVotes()" class="btn" style="background:rgba(255,50,50,0.2); color:#ff8a80;">清空</button>
+                    <!-- 新增导出按钮 -->
+                    <button onclick="exportCSV()" class="btn" style="background:rgba(0,255,100,0.2); color:#a5d6a7;">📥 CSV</button>
+                    <button onclick="exportPDF()" class="btn" style="background:rgba(255,200,50,0.2); color:#ffe082;">📄 PDF</button>
                 </div>
             </div>
         </div>
@@ -241,6 +248,9 @@
     </div>
 
     <div id="toast" class="toast"></div>
+
+    <!-- 隐藏的容器，用于生成PDF快照 -->
+    <div id="pdf-container" style="position: absolute; top: -9999px; left: -9999px; width: 800px; background: white; padding: 20px;"></div>
 
     <script>
         const MEMFIRE_URL = 'https://d4g6fdgg91htqli3u7sg.baseapi.memfiredb.com';
@@ -372,23 +382,15 @@
             await saveToCloud(false); 
         }
 
-        // === 新增：计算并同步所有表头高度 ===
         function equalizeHeaders() {
             const headers = document.querySelectorAll('.col-header');
             if (headers.length === 0) return;
-
-            // 1. 重置高度以获取自然高度
             headers.forEach(h => h.style.height = 'auto');
-
-            // 2. 找到最大高度
             let maxH = 0;
             headers.forEach(h => {
                 const hPx = h.offsetHeight;
                 if (hPx > maxH) maxH = hPx;
             });
-
-            // 3. 统一设置为最大高度
-            // 只有当 maxH 大于默认 min-height (80px) 时才应用，否则保持 CSS 控制
             if (maxH > 80) {
                 headers.forEach(h => h.style.height = maxH + 'px');
             }
@@ -483,8 +485,6 @@
                 }
             });
             box.innerHTML = html;
-
-            // === 渲染后立即执行高度同步 ===
             requestAnimationFrame(() => {
                 equalizeHeaders();
             });
@@ -557,7 +557,6 @@
                 }
             }
 
-            // 非关键路径不显示 Loading
             if (!db) { showToast('数据库未连接'); return; }
 
             const { error } = await db.from('quizzes').upsert({
@@ -634,6 +633,117 @@
             }
         }
         
+        // === 导出功能 ===
+
+        function exportCSV() {
+            if (!state.data.questions || state.data.questions.length === 0) return showToast('没有数据可导出');
+            
+            // CSV BOM for Excel Chinese support
+            let csvContent = "\uFEFF问题,选项,票数,投票人名单\n";
+
+            state.data.questions.forEach(q => {
+                const qVotes = state.data.votes[q.id] || {};
+                q.options.forEach(opt => {
+                    const voters = qVotes[opt] || [];
+                    const voterStr = voters.join('; ');
+                    // 处理逗号和换行符，避免CSV格式错误
+                    const cleanTitle = q.title.replace(/,/g, '，').replace(/\n/g, ' ');
+                    const cleanOpt = opt.replace(/,/g, '，');
+                    csvContent += `${cleanTitle},${cleanOpt},${voters.length},"${voterStr}"\n`;
+                });
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `投票结果_${state.pageId}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        async function exportPDF() {
+            if (!state.data.questions || state.data.questions.length === 0) return showToast('没有数据');
+            
+            showToast('正在生成 PDF...');
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+            
+            // 隐藏的渲染容器
+            const container = document.getElementById('pdf-container');
+            container.innerHTML = '';
+            
+            // 临时生成一个适合打印的DOM结构
+            // 我们不能直接截图 #quiz-list，因为它有滚动条限制(max-height/grid)
+            // 这里我们手动重建HTML结构，去除所有高度限制
+            
+            const questions = state.data.questions;
+            
+            for (let i = 0; i < questions.length; i++) {
+                const q = questions[i];
+                const qVotes = state.data.votes[q.id] || {};
+                
+                // 构建单个问题的HTML
+                let colsHtml = '';
+                q.options.forEach(opt => {
+                    const voters = qVotes[opt] || [];
+                    const namesHtml = voters.map(n => 
+                        `<span style="display:inline-block; border:1px solid #ccc; padding:2px 6px; margin:2px; border-radius:4px; font-size:12px;">${n}</span>`
+                    ).join('');
+                    
+                    colsHtml += `
+                        <div style="margin-bottom:15px; break-inside: avoid;">
+                            <div style="background:#eee; padding:8px; font-weight:bold; border-radius:4px; display:flex; justify-content:space-between;">
+                                <span>${opt}</span>
+                                <span>${voters.length}票</span>
+                            </div>
+                            <div style="padding:5px; display:flex; flex-wrap:wrap;">
+                                ${namesHtml || '<span style="color:#999;font-size:12px;">无</span>'}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                const qHtml = `
+                    <div style="background:white; border:1px solid #ddd; padding:20px; border-radius:8px; margin-bottom:20px;">
+                        <h2 style="margin-bottom:15px; border-bottom:2px solid #333; padding-bottom:10px;">${i+1}. ${q.title}</h2>
+                        <div>${colsHtml}</div>
+                    </div>
+                `;
+                
+                // 放入容器进行渲染
+                container.innerHTML = qHtml;
+                
+                // 截图
+                try {
+                    const canvas = await html2canvas(container, { scale: 2, useCORS: true });
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    
+                    const imgProps = pdf.getImageProperties(imgData);
+                    const pdfWidth = pdf.internal.pageSize.getWidth();
+                    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                    
+                    // 如果不是第一页，添加新页
+                    if (i > 0) pdf.addPage();
+                    
+                    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+                    
+                    // 如果图片高度超过一页（虽然我们按题分页，但如果题目特别长）
+                    // 简单的处理是按题分页，通常够用。如果单个题目太长超过A4，html2canvas截图会包含，
+                    // 但addImage会压缩或截断。这里假设单题不会超过一页A4。
+                    
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+
+            container.innerHTML = ''; // 清理
+            pdf.save(`投票结果_${state.pageId}.pdf`);
+            showToast('PDF 下载成功');
+        }
+
+        // === 辅助函数 ===
         function toggle(qid, opt) {
             if(!state.temp[qid]) state.temp[qid] = [...getMyVotes(qid)];
             const i = state.temp[qid].indexOf(opt);
