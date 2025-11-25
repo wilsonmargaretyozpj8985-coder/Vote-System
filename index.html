@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>互动投票 - 完美导出版</title>
+    <title>互动投票 - 终极修复版</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -12,9 +12,9 @@
 
     <style>
         /* === 基础样式 === */
-        :root { --primary: #263238; --bg: #f0f2f5; --c1: #29b6f6; --active: #4caf50; }
+        :root { --primary: #263238; --bg: #f0f2f5; --active: #4caf50; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, Roboto, sans-serif; background: var(--bg); color: var(--primary); padding-bottom: 80px; }
+        body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; background: var(--bg); color: var(--primary); padding-bottom: 80px; }
         
         .navbar { background: #fff; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
         .brand { font-weight: 900; font-size: 20px; }
@@ -34,8 +34,6 @@
         .col-header { background: #eef0f2; border-top: 6px solid #ccc; border-radius: 8px; padding: 15px 10px; text-align: center; min-height: 80px; display: flex; flex-direction: column; justify-content: center; }
         .board-col:nth-child(5n+1) .col-header { border-top-color: #29b6f6; }
         .board-col:nth-child(5n+2) .col-header { border-top-color: #ef5350; }
-        .board-col:nth-child(5n+3) .col-header { border-top-color: #ffa726; }
-        .board-col:nth-child(5n+4) .col-header { border-top-color: #66bb6a; }
         .col-title { font-size: 18px; font-weight: 800; color: #333; margin-bottom: 5px; }
         .col-count { font-size: 20px; font-weight: 900; opacity: 0.6; }
         .voter-list { margin-top: 15px; display: grid; grid-template-rows: repeat(8, 1fr); grid-auto-flow: column; gap: 10px; overflow-x: auto; }
@@ -62,23 +60,22 @@
         #qrcode-box { display: flex; justify-content: center; margin-bottom: 20px; }
         #qrcode-box img { border: 10px solid white; border-radius: 8px; }
 
-        /* 导出列表样式 */
         .export-list { text-align: left; max-height: 250px; overflow-y: auto; border: 1px solid #eee; padding: 10px; margin-bottom: 20px; border-radius: 8px; }
-        .export-item { display: flex; align-items: center; padding: 8px; border-bottom: 1px solid #f5f5f5; }
         
         /* 
-           PDF 专用容器：
-           关键点：宽度固定为 750px (适配A4宽度)，不要 display:none，否则 html2canvas 无法截图 
-           放在屏幕很远的地方隐藏
+           PDF 专用容器
+           修改：为了解决截断问题，我们把它放在可视区域内，但在最底层 (z-index -1)
+           这样浏览器就会完整渲染它，不会进行离屏裁剪优化。
         */
-        #pdf-container { 
-            position: absolute; 
-            top: -10000px; 
-            left: -10000px; 
-            width: 750px; /* 锁定宽度，防止溢出 */
-            background: white; 
-            padding: 20px; 
-            font-family: 'Helvetica', 'Arial', sans-serif;
+        #pdf-renderer-box {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 750px; /* 固定A4比例宽度 */
+            z-index: -999;
+            background: #fff;
+            visibility: hidden; /* 使用 visibility 而不是 display:none */
+            padding: 20px;
         }
     </style>
 </head>
@@ -93,8 +90,7 @@
     <div id="login-modal" class="modal" style="display:flex; z-index:2500;">
         <div class="modal-box" style="text-align:center;">
             <h2>👋 欢迎参与</h2>
-            <p style="color:#666; margin:15px 0;">请输入您的名字</p>
-            <input type="text" id="username" class="input" placeholder="您的名字" style="text-align:center; margin-bottom:10px;">
+            <input type="text" id="username" class="input" placeholder="您的名字" style="text-align:center; margin:15px 0;">
             <button onclick="handleLogin()" class="btn btn-primary" style="width:100%">进入</button>
         </div>
     </div>
@@ -124,7 +120,7 @@
         <div id="quiz-list"></div>
     </div>
 
-    <!-- 编辑/新建弹窗 -->
+    <!-- 各种弹窗 (新建、权限、二维码) -->
     <div id="edit-modal" class="modal">
         <div class="modal-box">
             <h3 id="modal-title">新建投票</h3><br>
@@ -137,8 +133,6 @@
             </div>
         </div>
     </div>
-
-    <!-- 权限弹窗 -->
     <div id="auth-modal" class="modal">
         <div class="modal-box" style="text-align:center;">
             <h3>管理员模式</h3><br>
@@ -147,18 +141,13 @@
             <button onclick="closeModal('auth-modal')" class="btn btn-ghost" style="margin-top:10px;">取消</button>
         </div>
     </div>
-
-    <!-- 二维码弹窗 -->
     <div id="qr-modal" class="modal">
         <div class="modal-box" style="text-align:center; max-width:350px;">
-            <h3 style="margin-bottom:20px;">扫码参与投票</h3>
+            <h3 style="margin-bottom:20px;">扫码参与</h3>
             <div id="qrcode-box"></div>
-            <p style="color:#666; font-size:14px; margin-bottom:20px;">观众扫描上方二维码即可进入</p>
             <button onclick="closeModal('qr-modal')" class="btn btn-ghost" style="width:100%">关闭</button>
         </div>
     </div>
-    
-    <!-- 导出选择弹窗 -->
     <div id="export-modal" class="modal">
         <div class="modal-box" style="text-align:center;">
             <h3 style="margin-bottom:15px;">选择要导出的题目</h3>
@@ -171,7 +160,9 @@
     </div>
 
     <div id="toast" class="toast"></div>
-    <div id="pdf-container"></div> <!-- 渲染容器 -->
+    
+    <!-- 渲染容器：专门用于生成图片积木 -->
+    <div id="pdf-renderer-box"></div>
 
     <script>
         const MEMFIRE_URL = 'https://d4g6fdgg91htqli3u7sg.baseapi.memfiredb.com';
@@ -425,7 +416,6 @@
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.style.display='block'; setTimeout(()=>t.style.display='none',2000); }
 
-        // === 导出相关 ===
         function showExportModal() {
             if(!state.data.questions || state.data.questions.length === 0) return showToast('没有数据');
             const list = document.getElementById('export-checklist');
@@ -442,47 +432,62 @@
             exportPDF(Array.from(boxes).map(c => c.value));
         }
 
-        // === 核心：完美分页导出 ===
+        // ==========================================
+        //         终极修复版 PDF 导出逻辑
+        // ==========================================
         async function exportPDF(selectedIds) {
-            showToast('生成中，请勿关闭页面...');
+            showToast('生成中，请勿关闭页面 (步骤 1/3)...');
             const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF('p', 'mm', 'a4'); // Portrait, A4
+            const pdf = new jsPDF('p', 'mm', 'a4'); // 纵向A4
             
-            // A4 尺寸常数
+            // A4 尺寸定义
             const pageWidth = 210;
             const pageHeight = 297;
             const margin = 10;
-            const contentWidth = pageWidth - (margin * 2);
-            const contentHeightLimit = pageHeight - (margin * 2); // 每页可用高度
+            const contentWidth = pageWidth - (margin * 2); // 190mm
+            const contentHeightLimit = pageHeight - (margin * 2); // 277mm
 
-            let cursorY = margin; // 当前页面的垂直光标位置
+            let cursorY = margin; // 垂直光标
+            
+            // 获取渲染容器
+            const container = document.getElementById('pdf-renderer-box');
+            // 设置 visible，确保 html2canvas 能捕获，z-index -1 确保不遮挡用户
+            container.style.visibility = 'visible'; 
 
-            const container = document.getElementById('pdf-container');
             const targetQuestions = state.data.questions.filter(q => selectedIds.includes(q.id));
             
-            // 辅助：处理添加图片和自动换页
-            async function addElementToPdf(htmlContent) {
-                container.innerHTML = htmlContent;
-                // 使用 html2canvas 截图，固定 scale 保证清晰度
-                const canvas = await html2canvas(container, { scale: 2, useCORS: true, logging: false });
+            // --- 辅助函数：原子化渲染 ---
+            // 每次渲染一个积木，测量高度，不够位置就翻页
+            async function renderAtom(html) {
+                container.innerHTML = html;
+                
+                // 等待一下 DOM 渲染
+                await new Promise(r => setTimeout(r, 50));
+
+                const canvas = await html2canvas(container, {
+                    scale: 2, // 提高清晰度
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: '#ffffff'
+                });
+                
                 const imgData = canvas.toDataURL('image/jpeg', 0.95);
                 const imgProps = pdf.getImageProperties(imgData);
-                
-                // 计算图片在PDF中的实际高度 (按宽度缩放)
+                // 计算在 PDF 中的高度 (高度 = 图片原高 * (内容区宽度 / 图片原宽))
                 const pdfImgHeight = (imgProps.height * contentWidth) / imgProps.width;
 
-                // 检查是否需要翻页
+                // 核心逻辑：如果当前位置 + 新图片高度 > 页面底部，则翻页
                 if (cursorY + pdfImgHeight > contentHeightLimit) {
                     pdf.addPage();
                     cursorY = margin;
                 }
 
                 pdf.addImage(imgData, 'JPEG', margin, cursorY, contentWidth, pdfImgHeight);
-                cursorY += pdfImgHeight + 5; // 增加光标，留5mm间距
+                cursorY += pdfImgHeight + 5; // 增加间距
             }
 
-            // --- 1. 题目统计 (瀑布流模式) ---
-            await addElementToPdf(`<h1 style="text-align:center;border-bottom:2px solid #333;padding-bottom:10px;">投票结果报告</h1>`);
+            // --- 步骤 1：题目统计 ---
+            await renderAtom(`<h1 style="text-align:center;border-bottom:2px solid #333;padding-bottom:10px;margin-bottom:10px;">投票报告</h1>`);
 
             for (let i = 0; i < targetQuestions.length; i++) {
                 const q = targetQuestions[i];
@@ -491,47 +496,64 @@
                 let colsHtml = '';
                 q.options.forEach(opt => {
                     const voters = qVotes[opt] || [];
-                    const namesHtml = voters.map(n => `<span style="display:inline-block;border:1px solid #ddd;background:#f9f9f9;padding:2px 6px;margin:2px;border-radius:4px;font-size:12px;">${n}</span>`).join('');
-                    colsHtml += `<div style="margin-bottom:10px;"><div style="background:#eee;padding:6px 10px;font-weight:bold;border-radius:4px;display:flex;justify-content:space-between;font-size:14px;"><span>${opt}</span><span>${voters.length}票</span></div><div style="padding:5px;">${namesHtml||'<span style="color:#ccc;font-size:12px">-</span>'}</div></div>`;
+                    const namesHtml = voters.map(n => `<span style="display:inline-block;border:1px solid #ddd;background:#f9f9f9;padding:2px 6px;margin:2px;border-radius:4px;font-size:12px;color:#333;">${n}</span>`).join('');
+                    
+                    colsHtml += `
+                        <div style="margin-bottom:10px;">
+                            <div style="background:#eee;padding:6px 10px;font-weight:bold;border-radius:4px;display:flex;justify-content:space-between;font-size:14px;color:#333;">
+                                <span>${opt}</span><span>${voters.length}票</span>
+                            </div>
+                            <div style="padding:5px;">${namesHtml || '<span style="color:#ccc;font-size:12px">-</span>'}</div>
+                        </div>`;
                 });
 
-                // 每次只渲染一个题目，确保不会被截断
-                const qHtml = `<div style="background:white;border:1px solid #ccc;padding:15px;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,0.05);"><h3 style="margin-bottom:10px;border-left:4px solid #333;padding-left:10px;">Q${i+1}. ${q.title}</h3><div>${colsHtml}</div></div>`;
-                await addElementToPdf(qHtml);
+                // 原子化：一个问题就是一个积木
+                const qBlock = `
+                    <div style="background:white;border:1px solid #ccc;padding:15px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);font-family:sans-serif;">
+                        <h3 style="margin-bottom:10px;border-left:4px solid #333;padding-left:10px;color:#000;">Q${i+1}. ${q.title}</h3>
+                        <div>${colsHtml}</div>
+                    </div>`;
+                
+                await renderAtom(qBlock);
             }
 
-            // --- 2. 参与者详情 (瀑布流模式) ---
-            pdf.addPage(); 
+            // --- 步骤 2：参与者详情 ---
+            showToast('正在生成参与者明细 (步骤 2/3)...');
+            pdf.addPage();
             cursorY = margin;
-            await addElementToPdf(`<h2 style="text-align:center;border-bottom:1px solid #999;padding-bottom:10px;">参与者明细</h2>`);
+            await renderAtom(`<h2 style="text-align:center;border-bottom:1px solid #999;padding-bottom:10px;margin-bottom:15px;">参与者明细</h2>`);
 
-            // 整理数据
             const userStats = {};
             targetQuestions.forEach((q, idx) => {
                 const qVotes = state.data.votes[q.id] || {};
                 q.options.forEach(opt => {
                     (qVotes[opt]||[]).forEach(u => {
                         if(!userStats[u]) userStats[u] = [];
-                        userStats[u].push(`[题${idx+1}] ${opt}`);
+                        userStats[u].push(`[Q${idx+1}] ${opt}`);
                     });
                 });
             });
-
             const allUsers = Object.keys(userStats).sort();
-            const BATCH_SIZE = 6; // 每次渲染6个人，防止单个图片过长
-            
-            for(let i=0; i<allUsers.length; i+=BATCH_SIZE) {
-                const batch = allUsers.slice(i, i+BATCH_SIZE);
-                let batchHtml = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">`;
-                batch.forEach(u => {
-                    batchHtml += `<div style="border:1px solid #ccc;padding:10px;border-radius:6px;background:#fff;"><div style="font-weight:bold;color:#2196f3;border-bottom:1px solid #eee;margin-bottom:5px;">${u}</div><div style="font-size:12px;color:#555;">${userStats[u].join('<br>')}</div></div>`;
-                });
-                batchHtml += `</div>`;
-                await addElementToPdf(batchHtml);
+
+            // 原子化：一个人就是一个积木。这样绝对不会在中间截断。
+            // 使用 flex 布局让其看起来像 Grid，但每次只渲染一个
+            for(let i=0; i<allUsers.length; i++) {
+                const u = allUsers[i];
+                const history = userStats[u].join('<br>');
+                // 单个用户卡片 HTML
+                const userBlock = `
+                    <div style="border:1px solid #ccc;padding:12px;border-radius:6px;background:#fff;margin-bottom:5px;font-family:sans-serif;">
+                        <div style="font-weight:bold;color:#2196f3;border-bottom:1px solid #eee;margin-bottom:5px;font-size:16px;">${u}</div>
+                        <div style="font-size:12px;color:#555;line-height:1.5;">${history}</div>
+                    </div>
+                `;
+                await renderAtom(userBlock);
             }
 
-            // --- 3. 关系图 (横版) ---
-            // 准备数据
+            // --- 步骤 3：关系图 (ECharts 原生导出，不使用 html2canvas 截图) ---
+            showToast('正在绘制图表 (步骤 3/3)...');
+            
+            // 准备节点数据
             const graphNodes = [];
             const graphLinks = [];
             const added = new Set();
@@ -540,14 +562,12 @@
                 q.options.forEach(opt => {
                     const voters = qVotes[opt] || [];
                     if(voters.length === 0) return;
-                    // 中心节点：选项
                     const optId = `Q${qi+1}-${opt}`;
-                    const optLabel = `Q${qi+1}\n${opt}`;
+                    const optLabel = `Q${qi+1}\n${opt}`; // 换行
                     if(!added.has(optId)) {
-                        graphNodes.push({ name: optId, value: optLabel, symbolSize: 30 + (voters.length*4), category: 1, itemStyle: {color:'#4caf50'}, label: {show:true, formatter: '{c}', fontWeight:'bold'} });
+                        graphNodes.push({ name: optId, value: optLabel, symbolSize: 25 + (voters.length*3), category: 1, itemStyle: {color:'#4caf50'}, label: {show:true, formatter: '{c}', fontWeight:'bold'} });
                         added.add(optId);
                     }
-                    // 周围节点：人
                     voters.forEach(u => {
                         if(!added.has(u)) {
                             graphNodes.push({ name: u, value: u, symbolSize: 15, category: 0, itemStyle: {color:'#2196f3'}, label: {show:true, position:'bottom', fontSize:10} });
@@ -558,49 +578,62 @@
                 });
             });
 
-            // 渲染图表
+            // 初始化 ECharts (在一个大的隐藏 Div 中，保证分辨率)
+            // 我们临时把 pdf-renderer-box 变大来容纳图表
             container.innerHTML = '';
-            const chartW = 1000, chartH = 650; // 横版尺寸
-            container.style.width = chartW + 'px';
+            container.style.width = '1200px'; 
+            container.style.height = '800px'; 
             
-            const titleDiv = document.createElement('div');
-            titleDiv.innerHTML = `<h1 style="text-align:center;">项目-人员 关系图谱</h1>`;
-            container.appendChild(titleDiv);
+            // 标题
+            const chartHeader = document.createElement('h2');
+            chartHeader.innerText = '关系图谱';
+            chartHeader.style.textAlign = 'center';
+            container.appendChild(chartHeader);
 
             const chartDiv = document.createElement('div');
-            chartDiv.style.width = chartW + 'px';
-            chartDiv.style.height = chartH + 'px';
+            chartDiv.style.width = '1200px';
+            chartDiv.style.height = '750px';
             container.appendChild(chartDiv);
 
-            const myChart = echarts.init(chartDiv, null, { renderer: 'svg' });
+            const myChart = echarts.init(chartDiv);
             myChart.setOption({
-                animation: false,
+                animation: false, // 关动画
                 series: [{
                     type: 'graph', layout: 'force',
                     data: graphNodes, links: graphLinks,
-                    roam: false,
+                    roam: false, // 关漫游
                     label: { show: true },
-                    force: { repulsion: 800, edgeLength: 120, gravity: 0.15 }, // 引力强一点让图居中
+                    force: { repulsion: 600, edgeLength: 100, gravity: 0.1 },
                     lineStyle: { opacity: 0.3 }
                 }]
             });
-            
-            // 等待图表稳定
+
+            // 等待布局稳定
             await new Promise(r => setTimeout(r, 1500));
 
-            // 添加横版页面
-            pdf.addPage('l'); // Landscape
-            const lWidth = 297; // A4横版宽
-            const lCanvas = await html2canvas(container, { scale: 1.5 }); // 图表不需要太高倍率
-            const lImg = lCanvas.toDataURL('image/jpeg', 0.9);
-            pdf.addImage(lImg, 'JPEG', 10, 10, lWidth-20, (lCanvas.height/lCanvas.width)*(lWidth-20));
+            // *** 关键修复：使用 ECharts 原生导出，不截图 ***
+            const chartImgData = myChart.getDataURL({
+                type: 'png',
+                pixelRatio: 2, // 2倍高清
+                backgroundColor: '#fff'
+            });
 
-            // 恢复容器
+            // 新增横版页面
+            pdf.addPage('l'); // Landscape
+            const lWidth = 297; 
+            const lHeight = 210;
+            // 计算比例放进去
+            pdf.text("关系图谱", 148, 15, { align: 'center' }); // 手动加标题
+            // 留边距 10mm
+            pdf.addImage(chartImgData, 'PNG', 10, 20, lWidth-20, lHeight-30);
+
+            // 清理
+            container.style.visibility = 'hidden';
             container.style.width = '750px';
             container.innerHTML = '';
             
             pdf.save(`Report_${state.pageId}.pdf`);
-            showToast('下载完成');
+            showToast('PDF 下载成功！');
         }
     </script>
 </body>
