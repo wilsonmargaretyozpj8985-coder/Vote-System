@@ -3,182 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>互动投票 - 专业版</title>
-    <!-- Supabase / MemFire -->
+    <title>互动投票 - 完美导出版</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-    <!-- 二维码生成 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <!-- PDF 导出相关 (jsPDF + html2canvas) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <!-- ECharts (用于生成关系图) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
 
     <style>
-        /* === 样式表 === */
-        :root {
-            --primary: #263238; 
-            --bg: #f0f2f5;
-            --c1: #29b6f6; --c2: #ef5350; --c3: #ffa726; --c4: #66bb6a; --c5: #ab47bc;
-            --active-border: #4caf50;
-        }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--primary); padding-bottom: 80px; }
+        /* === 基础样式 === */
+        :root { --primary: #263238; --bg: #f0f2f5; --c1: #29b6f6; --active: #4caf50; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, Roboto, sans-serif; background: var(--bg); color: var(--primary); padding-bottom: 80px; }
         
-        .navbar { background: #fff; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.05); position: sticky; top: 0; z-index: 100; }
+        .navbar { background: #fff; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
         .brand { font-weight: 900; font-size: 20px; }
-
         .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
         
-        .btn { padding: 8px 12px; border-radius: 6px; border: none; font-weight: 700; cursor: pointer; transition: 0.2s; font-size: 14px; }
+        .btn { padding: 8px 12px; border-radius: 6px; border: none; font-weight: 700; cursor: pointer; font-size: 14px; }
         .btn-primary { background: #222; color: white; }
-        .btn-success { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; } 
-        .btn-danger { background: #ffebee; color: #d32f2f; border: 1px solid #ffcdd2; }
-        .btn-info { background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; }
+        .btn-danger { background: #ffebee; color: #d32f2f; }
+        .btn-info { background: #e3f2fd; color: #1976d2; }
         .btn-ghost { background: transparent; color: #666; }
         .btn-outline { background: transparent; border: 2px solid #222; color: #222; }
         .btn-sm { font-size: 12px; padding: 5px 10px; }
         .input { width: 100%; padding: 14px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 16px; outline: none; }
 
-        /* 看板布局 */
-        .board-container { 
-            display: grid; 
-            gap: 25px; 
-            padding-bottom: 10px; 
-            align-items: start; 
-            overflow-x: auto; 
-            height: 100%; 
-        }
+        /* 投票看板 */
+        .board-container { display: grid; gap: 20px; align-items: start; overflow-x: auto; }
+        .col-header { background: #eef0f2; border-top: 6px solid #ccc; border-radius: 8px; padding: 15px 10px; text-align: center; min-height: 80px; display: flex; flex-direction: column; justify-content: center; }
+        .board-col:nth-child(5n+1) .col-header { border-top-color: #29b6f6; }
+        .board-col:nth-child(5n+2) .col-header { border-top-color: #ef5350; }
+        .board-col:nth-child(5n+3) .col-header { border-top-color: #ffa726; }
+        .board-col:nth-child(5n+4) .col-header { border-top-color: #66bb6a; }
+        .col-title { font-size: 18px; font-weight: 800; color: #333; margin-bottom: 5px; }
+        .col-count { font-size: 20px; font-weight: 900; opacity: 0.6; }
+        .voter-list { margin-top: 15px; display: grid; grid-template-rows: repeat(8, 1fr); grid-auto-flow: column; gap: 10px; overflow-x: auto; }
+        .name-card { background: white; padding: 2px 4px; border-radius: 4px; border: 1px solid #eee; text-align: center; font-size: 12px; font-weight: 600; min-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        .board-col { 
-            min-width: 0;
-            background: transparent; 
-            padding: 0; 
-            display: flex; 
-            flex-direction: column; 
-            transition: all 0.3s; 
-            height: 100%; 
-        }
-
-        /* 选项标题框 */
-        .col-header { 
-            margin-bottom: 0;
-            text-align: center; 
-            background: #eef0f2;
-            border-top: 6px solid #ccc;
-            border-radius: 8px;
-            min-height: 80px; 
-            height: auto; 
-            padding: 15px 10px; 
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            flex-shrink: 0; 
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            transition: height 0.2s ease; 
-        }
-        
-        .board-col:nth-child(5n+1) .col-header { border-top-color: var(--c1); }
-        .board-col:nth-child(5n+2) .col-header { border-top-color: var(--c2); }
-        .board-col:nth-child(5n+3) .col-header { border-top-color: var(--c3); }
-        .board-col:nth-child(5n+4) .col-header { border-top-color: var(--c4); }
-        .board-col:nth-child(5n+5) .col-header { border-top-color: var(--c5); }
-
-        .col-title { 
-            font-size: 18px; 
-            font-weight: 800; 
-            color: #333; 
-            margin-bottom: 5px; 
-            line-height: 1.3; 
-            white-space: pre-wrap; 
-            word-break: break-word; 
-        }
-        .col-count { font-size: 20px; font-weight: 900; color: var(--primary); opacity: 0.6; }
-        
-        /* 名字列表 */
-        .voter-list { 
-            margin-top: 15px; 
-            display: grid;
-            grid-template-rows: repeat(8, 1fr); 
-            grid-auto-flow: column; 
-            column-gap: 10px; 
-            row-gap: 10px;    
-            overflow-x: auto; 
-            padding-bottom: 5px;
-            flex: 1; 
-            align-content: start;
-        }
-
-        .name-card { 
-            background: white; 
-            padding: 0 4px; 
-            border-radius: 4px; 
-            font-weight: 600; 
-            text-align: center; 
-            border: 1px solid #eee;
-            animation: popIn 0.4s; 
-            color: #444; 
-            width: 100%; 
-            min-width: 60px; 
-            white-space: nowrap; 
-            overflow: hidden;
-            text-overflow: ellipsis; 
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%; 
-            font-size: clamp(10px, 1.1vw, 14px); 
-        }
-        
-        .user-card { background: white; padding: 25px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); }
-        .opt-btn { background: #f7f7f7; padding: 15px; margin-bottom: 10px; border-radius: 10px; font-weight: 600; border: 2px solid transparent; cursor: pointer; transition: 0.1s; }
+        .active-question-card { border: 2px solid var(--active); position: relative; }
+        .active-question-card::after { content: "正在进行"; position: absolute; top: -12px; right: 20px; background: var(--active); color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: bold; }
+        .user-card { background: white; padding: 25px; border-radius: 16px; margin-bottom: 20px; }
+        .opt-btn { background: #f7f7f7; padding: 15px; margin-bottom: 10px; border-radius: 10px; font-weight: 600; cursor: pointer; border: 2px solid transparent; }
         .opt-btn.selected { background: #e3f2fd; border-color: #2196f3; color: #1565c0; }
-        .opt-btn:active { transform: scale(0.98); }
 
-        .active-question-card { border: 2px solid var(--active-border); position: relative; }
-        .active-question-card::after { content: "正在进行"; position: absolute; top: -12px; right: 20px; background: var(--active-border); color: white; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: bold; }
+        /* 演示端 */
+        .presenter-layout { padding: 40px; height: 100vh; display: flex; flex-direction: column; background: white; }
+        .presenter-title { font-size: 3vw; text-align: center; margin-bottom: 30px; font-weight: 900; }
+        body.focus-mode .navbar, body.focus-mode #admin-box, body.focus-mode .user-card { display: none; }
+        body.focus-mode .container { max-width: 100%; padding: 0; }
 
-        /* 演示端布局 */
-        .presenter-layout {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            width: 100%;
-            padding: 20px 40px 30px 40px; 
-            background: white;
-            overflow: hidden; 
-        }
-        .presenter-header { flex: 0 0 auto; margin-bottom: 20px; text-align: center; }
-        .presenter-title { font-size: 3vw; font-weight: 900; line-height: 1.2; margin: 0; color: #222; }
-        .presenter-body { flex: 1 1 auto; overflow: hidden; display: flex; flex-direction: column; }
-        .presenter-layout .board-container { height: 100%; width: 100%; }
-
-        body.focus-mode .navbar { display: none; }
-        body.focus-mode .container { padding: 0; max-width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; } 
-        body.focus-mode .container:has(.presenter-layout) { display: block; padding: 0; }
-        body.focus-mode #admin-box { display: none !important; } 
-        body.focus-mode .user-card { display: none; }
-        
-        @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        /* 弹窗与加载 */
         .modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; justify-content:center; align-items:center; z-index:1000; backdrop-filter: blur(3px); }
-        .modal-box { background:white; width:90%; max-width:400px; padding:30px; border-radius: 16px; position: relative;}
-        
+        .modal-box { background:white; width:90%; max-width:400px; padding:30px; border-radius: 16px; position: relative; max-height: 80vh; overflow-y: auto;}
         #loading { position:fixed; top:0; left:0; width:100%; height:100%; background:#f0f2f5; z-index:2000; display:flex; justify-content:center; align-items:center; flex-direction:column; }
-        .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#333; color:white; padding:12px 24px; border-radius: 30px; display:none; z-index:3000; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#333; color:white; padding:12px 24px; border-radius: 30px; display:none; z-index:3000; font-weight: 600; }
         
         #qrcode-box { display: flex; justify-content: center; margin-bottom: 20px; }
         #qrcode-box img { border: 10px solid white; border-radius: 8px; }
 
-        /* PDF 专用容器，隐藏在视口外，但不能 display:none */
-        #pdf-container { position: absolute; top: -9999px; left: -9999px; width: 800px; background: white; padding: 20px; }
-        
-        /* 导出复选框列表样式 */
+        /* 导出列表样式 */
         .export-list { text-align: left; max-height: 250px; overflow-y: auto; border: 1px solid #eee; padding: 10px; margin-bottom: 20px; border-radius: 8px; }
         .export-item { display: flex; align-items: center; padding: 8px; border-bottom: 1px solid #f5f5f5; }
-        .export-item:last-child { border-bottom: none; }
-        .export-item input { margin-right: 10px; transform: scale(1.2); }
+        
+        /* 
+           PDF 专用容器：
+           关键点：宽度固定为 750px (适配A4宽度)，不要 display:none，否则 html2canvas 无法截图 
+           放在屏幕很远的地方隐藏
+        */
+        #pdf-container { 
+            position: absolute; 
+            top: -10000px; 
+            left: -10000px; 
+            width: 750px; /* 锁定宽度，防止溢出 */
+            background: white; 
+            padding: 20px; 
+            font-family: 'Helvetica', 'Arial', sans-serif;
+        }
     </style>
 </head>
 <body>
@@ -188,16 +89,13 @@
         <div style="font-size:12px; color:#999; margin-top:10px;">如果长时间未响应，请刷新页面</div>
     </div>
 
-    <!-- 登录弹窗 -->
+    <!-- 登录 -->
     <div id="login-modal" class="modal" style="display:flex; z-index:2500;">
         <div class="modal-box" style="text-align:center;">
-            <h2 style="margin-bottom:20px;">👋 欢迎参与</h2>
-            <p style="color:#666; margin-bottom:15px; font-size:14px;">请输入您的名字以便统计</p>
+            <h2>👋 欢迎参与</h2>
+            <p style="color:#666; margin:15px 0;">请输入您的名字</p>
             <input type="text" id="username" class="input" placeholder="您的名字" style="text-align:center; margin-bottom:10px;">
-            <div style="font-size:12px; color:#999; margin-bottom:20px; background:#f9f9f9; padding:6px; border-radius:6px;">
-                示例：Tobias Guo
-            </div>
-            <button onclick="handleLogin()" class="btn btn-primary" style="width:100%">进入投票</button>
+            <button onclick="handleLogin()" class="btn btn-primary" style="width:100%">进入</button>
         </div>
     </div>
 
@@ -214,20 +112,19 @@
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-weight:bold;">🔴 总控台</span>
                 <div style="display:flex; gap:10px; flex-wrap: wrap; justify-content: flex-end;">
-                    <button onclick="startNewSession()" class="btn" style="background:#fff; color:#333; font-weight:800;">🚀 新场次</button>
+                    <button onclick="startNewSession()" class="btn" style="background:#fff; color:#333;">🚀 新场次</button>
                     <button onclick="copyPresenterLink()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📺 演示端</button>
                     <button onclick="openAddModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">+ 新题</button>
                     <button onclick="showQRCodeModal()" class="btn" style="background:rgba(255,255,255,0.2); color:white;">📱 二维码</button>
                     <button onclick="clearVotes()" class="btn" style="background:rgba(255,50,50,0.2); color:#ff8a80;">清空</button>
-                    <button onclick="exportCSV()" class="btn" style="background:rgba(0,255,100,0.2); color:#a5d6a7;">📥 CSV</button>
-                    <!-- 修改：打开导出选项弹窗 -->
-                    <button onclick="showExportModal()" class="btn" style="background:rgba(255,200,50,0.2); color:#ffe082;">📄 PDF报告</button>
+                    <button onclick="showExportModal()" class="btn" style="background:rgba(255,200,50,0.2); color:#ffe082;">📄 导出PDF</button>
                 </div>
             </div>
         </div>
         <div id="quiz-list"></div>
     </div>
 
+    <!-- 编辑/新建弹窗 -->
     <div id="edit-modal" class="modal">
         <div class="modal-box">
             <h3 id="modal-title">新建投票</h3><br>
@@ -241,6 +138,7 @@
         </div>
     </div>
 
+    <!-- 权限弹窗 -->
     <div id="auth-modal" class="modal">
         <div class="modal-box" style="text-align:center;">
             <h3>管理员模式</h3><br>
@@ -250,6 +148,7 @@
         </div>
     </div>
 
+    <!-- 二维码弹窗 -->
     <div id="qr-modal" class="modal">
         <div class="modal-box" style="text-align:center; max-width:350px;">
             <h3 style="margin-bottom:20px;">扫码参与投票</h3>
@@ -259,24 +158,20 @@
         </div>
     </div>
     
-    <!-- 新增：导出选择弹窗 -->
+    <!-- 导出选择弹窗 -->
     <div id="export-modal" class="modal">
         <div class="modal-box" style="text-align:center;">
             <h3 style="margin-bottom:15px;">选择要导出的题目</h3>
-            <div class="export-list" id="export-checklist">
-                <!-- JS 动态填充 -->
-            </div>
+            <div class="export-list" id="export-checklist"></div>
             <div style="display:flex; gap:10px;">
                 <button onclick="closeModal('export-modal')" class="btn btn-ghost" style="flex:1">取消</button>
-                <button onclick="confirmExportPDF()" class="btn btn-primary" style="flex:1">生成 PDF</button>
+                <button onclick="confirmExportPDF()" class="btn btn-primary" style="flex:1">生成完整报告</button>
             </div>
         </div>
     </div>
 
     <div id="toast" class="toast"></div>
-
-    <!-- 隐藏的容器，用于生成PDF快照 -->
-    <div id="pdf-container"></div>
+    <div id="pdf-container"></div> <!-- 渲染容器 -->
 
     <script>
         const MEMFIRE_URL = 'https://d4g6fdgg91htqli3u7sg.baseapi.memfiredb.com';
@@ -296,36 +191,22 @@
         };
 
         window.onload = function() {
-            if (typeof supabase === 'undefined') {
-                document.getElementById('loading').innerHTML = '<div style="color:red; font-weight:bold;">网络资源加载失败</div><div style="margin-top:10px;">请检查网络或<a href="javascript:location.reload()">刷新页面</a></div>';
-                return;
-            }
-
-            const { createClient } = supabase;
-            db = createClient(MEMFIRE_URL, MEMFIRE_KEY);
-            
-            window.onerror = function(msg, url, line) {
-                console.error("Global Error Caught:", msg);
-                document.getElementById('loading').style.display = 'none';
-                return false;
-            };
+            if (typeof supabase === 'undefined') return alert('资源加载失败，请刷新');
+            db = supabase.createClient(MEMFIRE_URL, MEMFIRE_KEY);
             
             if (state.role === 'presenter') {
                 document.body.classList.add('focus-mode');
                 hideLoadingAndModal();
                 state.user = 'Presenter';
                 initApp();
-            }
-            else if (state.role === 'admin') {
+            } else if (state.role === 'admin') {
                 hideLoadingAndModal();
                 state.user = 'Admin';
                 initApp();
-            }
-            else if(state.user) {
+            } else if(state.user) {
                 hideLoadingAndModal();
                 initApp();
-            } 
-            else {
+            } else {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('login-modal').style.display = 'flex';
             }
@@ -351,171 +232,103 @@
         async function initApp() {
             document.getElementById('app').style.display = 'block';
             document.getElementById('u-name').textContent = state.user;
-            
-            if(state.role === 'admin') {
-                document.getElementById('admin-box').style.display = 'block';
-            }
+            if(state.role === 'admin') document.getElementById('admin-box').style.display = 'block';
 
             if(state.pageId) { 
                 await loadData(); 
                 setupRealtime(); 
-            } else {
-                if(state.role === 'user') renderEmptyState();
+            } else if(state.role === 'user') {
+                document.getElementById('quiz-list').innerHTML = '<div style="text-align:center;margin-top:50px;color:#999">暂无活动</div>';
             }
-        }
-        
-        function renderEmptyState() {
-             const box = document.getElementById('quiz-list');
-             box.innerHTML = '<div style="text-align:center;margin-top:50px;color:#999">暂无活动或需等待管理员开启</div>';
         }
 
         async function loadData() {
-            try {
-                if (!db) return;
-                const { data, error } = await db.from('quizzes').select('*').eq('id', state.pageId).single();
-                if (data) updateUI(data);
-            } catch(e) { 
-                render(); 
-            }
+            if (!db) return;
+            const { data } = await db.from('quizzes').select('*').eq('id', state.pageId).single();
+            if (data) updateUI(data);
         }
 
         function setupRealtime() {
             if(realtimeSub || !db) return;
             realtimeSub = db.channel('room_' + state.pageId)
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'quizzes', filter: 'id=eq.' + state.pageId }, 
-                (payload) => { 
-                    if(payload && payload.new) {
-                        updateUI(payload.new); 
-                    }
-                })
+                (payload) => { if(payload.new) updateUI(payload.new); })
                 .subscribe();
         }
 
         function updateUI(serverData) {
-            if (!serverData) return;
-            state.data.questions = serverData.content || state.data.questions || [];
-            state.data.votes = serverData.votes || state.data.votes || {};
-            try { render(); } catch(e) {}
+            state.data.questions = serverData.content || [];
+            state.data.votes = serverData.votes || {};
+            render();
         }
 
         async function setActive(qid) {
             const targetQ = state.data.questions.find(i => i.id === qid);
             if (!targetQ) return;
-            const willBeActive = !targetQ.active;
-            state.data.questions.forEach(item => item.active = false);
-            targetQ.active = willBeActive;
+            targetQ.active = !targetQ.active;
             render();
             await saveToCloud(false); 
-        }
-
-        function equalizeHeaders() {
-            const headers = document.querySelectorAll('.col-header');
-            if (headers.length === 0) return;
-            headers.forEach(h => h.style.height = 'auto');
-            let maxH = 0;
-            headers.forEach(h => {
-                const hPx = h.offsetHeight;
-                if (hPx > maxH) maxH = hPx;
-            });
-            if (maxH > 80) {
-                headers.forEach(h => h.style.height = maxH + 'px');
-            }
         }
 
         function render() {
             const box = document.getElementById('quiz-list');
             let html = '';
+            let questionsToRender = state.role === 'admin' ? state.data.questions : state.data.questions.filter(q => q.active);
 
-            if (!state.data || !state.data.questions) { renderEmptyState(); return; }
-
-            let questionsToRender = [];
-            if (state.role === 'admin') {
-                questionsToRender = state.data.questions;
-            } else {
-                questionsToRender = state.data.questions.filter(q => q.active === true);
-                if (questionsToRender.length === 0) {
-                    box.innerHTML = '<div style="text-align:center;margin-top:30%;color:#999;font-size:20px;">⏳ 等待管理员开启题目...</div>';
-                    return;
-                }
-            }
-
-            if(questionsToRender.length === 0 && state.role === 'admin') {
-                 box.innerHTML = '<div style="text-align:center;margin-top:50px;color:#999">点击“+ 新题”添加内容</div>';
-                 return;
+            if(questionsToRender.length === 0) {
+                box.innerHTML = '<div style="text-align:center;margin-top:50px;color:#999">暂无内容</div>';
+                return;
             }
 
             questionsToRender.forEach((q, index) => {
-                if (!q) return; 
-                
                 const isAdmin = state.role === 'admin';
                 const isPresenter = state.role === 'presenter';
-                const qVotes = (state.data.votes && state.data.votes[q.id]) ? state.data.votes[q.id] : {};
+                const qVotes = state.data.votes[q.id] || {};
                 
-                if (isAdmin) {
+                if (isAdmin || isPresenter) {
                     const isActive = !!q.active;
-                    const activeClass = isActive ? 'active-question-card' : '';
                     let columnsHtml = '';
-                    if (q.options && Array.isArray(q.options)) {
+                    if (q.options) {
                         q.options.forEach(opt => {
                             const voters = qVotes[opt] || []; 
-                            const count = voters.length;
                             let namesHtml = voters.map(n => `<div class="name-card">${n}</div>`).join('');
-                            columnsHtml += `<div class="board-col"><div class="col-header"><div class="col-title">${opt}</div><div class="col-count">${count}</div></div><div class="voter-list">${namesHtml}</div></div>`;
-                        });
-                    }
-                    const showUp = index > 0;
-                    const showDown = index < state.data.questions.length - 1;
-                    const playBtnText = isActive ? '⏸️ 停止' : '▶️ 播放';
-                    const playBtnClass = isActive ? 'btn-danger' : 'btn-success';
-                    const headerTools = `
-                    <div style="display:flex; gap:10px; align-items:center;">
-                        <button onclick="setActive('${q.id}')" class="btn btn-sm ${playBtnClass}">${playBtnText}</button>
-                        <div style="width:10px;"></div>
-                        ${showUp ? `<button onclick="moveQ(${index}, -1)" class="btn btn-sm btn-ghost">⬆️</button>` : ''}
-                        ${showDown ? `<button onclick="moveQ(${index}, 1)" class="btn btn-sm btn-ghost">⬇️</button>` : ''}
-                        <button onclick="editQ('${q.id}')" class="btn btn-sm btn-info">修改</button>
-                        <button onclick="delQ('${q.id}')" class="btn btn-sm btn-danger">删除</button>
-                    </div>`;
-                    const colCount = q.options ? Math.min(q.options.length, 4) : 1;
-                    const gridStyle = `grid-template-columns: repeat(${colCount}, 1fr);`;
-                    html += `<div class="${activeClass}" style="margin-bottom:40px; padding:15px; border-radius:12px; background:white;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 style="font-size:20px;">${q.title}</h2>${headerTools}</div><div class="board-container" style="${gridStyle}">${columnsHtml}</div></div>`;
-                }
-                else if (isPresenter) {
-                    let columnsHtml = '';
-                    if (q.options && Array.isArray(q.options)) {
-                        q.options.forEach(opt => {
-                            const voters = qVotes[opt] || []; 
-                            const count = voters.length;
-                            let namesHtml = voters.map(n => `<div class="name-card">${n}</div>`).join('');
-                            columnsHtml += `<div class="board-col"><div class="col-header"><div class="col-title">${opt}</div><div class="col-count">${count}</div></div><div class="voter-list">${namesHtml}</div></div>`;
+                            columnsHtml += `<div class="board-col"><div class="col-header"><div class="col-title">${opt}</div><div class="col-count">${voters.length}</div></div><div class="voter-list">${namesHtml}</div></div>`;
                         });
                     }
                     const colCount = q.options ? Math.min(q.options.length, 4) : 1;
                     const gridStyle = `grid-template-columns: repeat(${colCount}, 1fr);`;
-                    html += `<div class="presenter-layout"><div class="presenter-header"><h1 class="presenter-title">${q.title}</h1></div><div class="presenter-body"><div class="board-container" style="${gridStyle}">${columnsHtml}</div></div></div>`;
-                } 
-                else {
+
+                    if(isAdmin) {
+                        const playBtn = isActive ? `<button onclick="setActive('${q.id}')" class="btn btn-sm btn-danger">⏹ 停止</button>` : `<button onclick="setActive('${q.id}')" class="btn btn-sm btn-success">▶ 开始</button>`;
+                        const tools = `<div style="display:flex; gap:10px;">${playBtn}<button onclick="editQ('${q.id}')" class="btn btn-sm btn-info">修改</button><button onclick="delQ('${q.id}')" class="btn btn-sm btn-danger">删除</button></div>`;
+                        html += `<div class="${isActive?'active-question-card':''}" style="margin-bottom:40px; padding:15px; border-radius:12px; background:white;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;"><h2 style="font-size:20px;">${q.title}</h2>${tools}</div>
+                            <div class="board-container" style="${gridStyle}">${columnsHtml}</div>
+                        </div>`;
+                    } else {
+                        html += `<div class="presenter-layout"><div class="presenter-header"><h1 class="presenter-title">${q.title}</h1></div><div class="presenter-body"><div class="board-container" style="${gridStyle}">${columnsHtml}</div></div></div>`;
+                    }
+                } else {
                     const myVotes = getMyVotes(q.id);
-                    let opts = '';
-                    if (q.options && Array.isArray(q.options)) {
-                        q.options.forEach(opt => {
-                            const isSel = state.temp[q.id] ? state.temp[q.id].includes(opt) : myVotes.includes(opt);
-                            const action = `onclick="toggle('${q.id}','${opt}')"`;
-                            opts += `<div class="opt-btn ${isSel?'selected':''}" ${action}>${opt}</div>`;
-                        });
-                    }
-                    const hasVoted = myVotes.length > 0;
-                    const btnText = hasVoted ? '更新选择' : '提交';
-                    const btnClass = hasVoted ? 'btn-outline' : 'btn-primary';
-                    html += `<div class="user-card"><h2 style="margin-bottom:15px;">${q.title}</h2><div style="display:flex;flex-direction:column;gap:5px;">${opts}</div><button id="btn-${q.id}" class="btn ${btnClass}" onclick="submitVote('${q.id}')" style="width:100%;margin-top:20px;">${btnText}</button></div>`;
+                    let opts = q.options.map(opt => {
+                        const isSel = state.temp[q.id] ? state.temp[q.id].includes(opt) : myVotes.includes(opt);
+                        return `<div class="opt-btn ${isSel?'selected':''}" onclick="toggle('${q.id}','${opt}')">${opt}</div>`;
+                    }).join('');
+                    const btnClass = myVotes.length > 0 ? 'btn-outline' : 'btn-primary';
+                    const btnText = myVotes.length > 0 ? '更新选择' : '提交';
+                    html += `<div class="user-card"><h2 style="margin-bottom:15px;">${q.title}</h2><div style="display:flex;flex-direction:column;">${opts}</div><button class="btn ${btnClass}" onclick="submitVote('${q.id}')" style="width:100%;margin-top:20px;">${btnText}</button></div>`;
                 }
             });
             box.innerHTML = html;
-            requestAnimationFrame(() => {
-                equalizeHeaders();
+            if(state.role!=='user') requestAnimationFrame(() => {
+                document.querySelectorAll('.col-header').forEach(h => h.style.height = 'auto');
+                let maxH = 0;
+                document.querySelectorAll('.col-header').forEach(h => maxH = Math.max(maxH, h.offsetHeight));
+                if(maxH>80) document.querySelectorAll('.col-header').forEach(h => h.style.height = maxH+'px');
             });
         }
 
+        // === 业务逻辑函数 ===
         function showQRCodeModal() {
             const userUrl = `${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}`;
             const qrBox = document.getElementById('qrcode-box');
@@ -523,19 +336,13 @@
             document.getElementById('qr-modal').style.display = 'flex';
             new QRCode(qrBox, { text: userUrl, width: 200, height: 200, colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H });
         }
-
         function copyPresenterLink() {
-            const url = `${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}&presenter=1`;
-            navigator.clipboard.writeText(url).then(() => { showToast('已复制演示端链接 (给投屏电脑用)'); });
+            navigator.clipboard.writeText(`${location.protocol}//${location.host}${location.pathname}?id=${state.pageId}&presenter=1`);
+            showToast('已复制演示端链接');
         }
-
         function startNewSession() {
-            if(confirm('⚠️ 确定开启新场次？\n\n1. 系统将生成全新的二维码和链接。\n2. 旧的二维码将无法控制当前屏幕。\n3. 适合换了一波新观众时使用。')) {
-                const newId = Date.now().toString();
-                location.href = location.pathname + '?id=' + newId + '&admin=1';
-            }
+            if(confirm('⚠️ 确定开启新场次？这将生成新链接。')) location.href = location.pathname + '?id=' + Date.now() + '&admin=1';
         }
-
         function openAddModal() {
             state.editingId = null;
             document.getElementById('modal-title').innerText = "新建投票";
@@ -544,377 +351,56 @@
             addOptLine(); 
             document.getElementById('edit-modal').style.display = 'flex';
         }
-
         function editQ(qid) {
             state.editingId = qid; 
             const q = state.data.questions.find(i => i.id === qid);
-            if (!q) return;
-
             document.getElementById('modal-title').innerText = "修改投票";
             document.getElementById('q-title').value = q.title;
             document.getElementById('q-opts').innerHTML = '';
-            
-            q.options.forEach(opt => {
-                addOptLine(opt);
-            });
-
+            q.options.forEach(opt => addOptLine(opt));
             document.getElementById('edit-modal').style.display = 'flex';
         }
-
         async function saveToCloud(refresh = true) {
             const title = document.getElementById('q-title').value.trim();
             const opts = Array.from(document.querySelectorAll('.opt-input')).map(i=>i.value.trim()).filter(v=>v);
-            
             if(!state.pageId) state.pageId = Date.now().toString();
-
             if(refresh) {
-                if(!title || opts.length < 1) return alert('请填写问题和至少一个选项');
-
+                if(!title || opts.length < 1) return alert('请填写完整');
                 if (state.editingId) {
-                    state.data.questions = state.data.questions.map(q => {
-                        if (q.id === state.editingId) {
-                            return { ...q, title, options: opts };
-                        }
-                        return q;
-                    });
+                    state.data.questions = state.data.questions.map(q => q.id === state.editingId ? { ...q, title, options: opts } : q);
                     state.editingId = null;
                 } else {
                     state.data.questions.push({ id: Date.now().toString(), title, options: opts });
                 }
             }
-
-            if (!db) { showToast('数据库未连接'); return; }
-
-            const { error } = await db.from('quizzes').upsert({
-                id: state.pageId, 
-                title: 'Vote '+state.pageId, 
-                content: state.data.questions, 
-                votes: state.data.votes
-            });
+            if (!db) return showToast('数据库未连接');
+            const { error } = await db.from('quizzes').upsert({ id: state.pageId, title: 'Vote '+state.pageId, content: state.data.questions, votes: state.data.votes });
             if(!error && refresh) {
                 if(!location.search.includes('id=')) location.href = '?id=' + state.pageId + '&admin=1';
                 else { closeModal('edit-modal'); render(); showToast('保存成功'); }
             }
         }
-
-        async function moveQ(index, direction) {
-            const newIndex = index + direction;
-            if (newIndex < 0 || newIndex >= state.data.questions.length) return;
-            const temp = state.data.questions[index];
-            state.data.questions[index] = state.data.questions[newIndex];
-            state.data.questions[newIndex] = temp;
-            render(); 
-            await saveToCloud(false); 
-        }
-
         async function submitVote(qid) {
-            let sels = state.temp[qid];
-            if(sels === undefined) sels = getMyVotes(qid);
-
+            let sels = state.temp[qid] || getMyVotes(qid);
             showToast('提交中...');
-            
-            if (!db) { showToast('连接断开，请刷新'); return; }
-
-            const { data: latest, error: fetchErr } = await db.from('quizzes').select('votes').eq('id', state.pageId).single();
-            if (fetchErr) { showToast('同步失败'); return; }
-
+            if (!db) return showToast('连接断开');
+            const { data: latest } = await db.from('quizzes').select('votes').eq('id', state.pageId).single();
             let cloudVotes = latest?.votes || state.data.votes || {};
             if(!cloudVotes[qid]) cloudVotes[qid] = {};
-            
-            Object.keys(cloudVotes[qid]).forEach(optKey => {
-                if(Array.isArray(cloudVotes[qid][optKey])) {
-                    cloudVotes[qid][optKey] = cloudVotes[qid][optKey].filter(u => u !== state.user);
-                }
-            });
-            
+            Object.keys(cloudVotes[qid]).forEach(k => { if(Array.isArray(cloudVotes[qid][k])) cloudVotes[qid][k] = cloudVotes[qid][k].filter(u => u !== state.user); });
             sels.forEach(opt => {
                 if(!cloudVotes[qid][opt]) cloudVotes[qid][opt] = [];
-                if(!cloudVotes[qid][opt].includes(state.user)) cloudVotes[qid][opt].push(state.user);
+                cloudVotes[qid][opt].push(state.user);
             });
-
-            const { error } = await db.from('quizzes').update({ votes: cloudVotes }).eq('id', state.pageId);
-            
-            if(!error) { 
-                delete state.temp[qid]; 
-                if (sels.length === 0) showToast('已撤销投票');
-                else showToast('提交成功'); 
-            } else {
-                showToast('提交失败，请重试');
-            }
+            await db.from('quizzes').update({ votes: cloudVotes }).eq('id', state.pageId);
+            delete state.temp[qid]; showToast('提交成功');
         }
-
         async function clearVotes() {
-            if(confirm('⚠️ 注意：清空仅删除投票数据，二维码不变！\n\n如果需要生成新二维码，请使用“🚀 新场次”按钮。')) { 
-                state.data.votes = {}; 
-                await saveToCloud(false); 
-                showToast('已清空'); 
-            }
+            if(confirm('确定清空所有票数？')) { state.data.votes = {}; await saveToCloud(false); showToast('已清空'); }
         }
-        
         async function delQ(qid) {
-            if(confirm('确定删除这道题吗？')) { 
-                state.data.questions = state.data.questions.filter(q=>q.id!==qid); 
-                delete state.data.votes[qid]; 
-                await saveToCloud(false); 
-            }
+            if(confirm('确定删除？')) { state.data.questions = state.data.questions.filter(q=>q.id!==qid); await saveToCloud(false); }
         }
-        
-        // === 导出功能 ===
-
-        function exportCSV() {
-            if (!state.data.questions || state.data.questions.length === 0) return showToast('没有数据可导出');
-            
-            // CSV BOM for Excel Chinese support
-            let csvContent = "\uFEFF问题,选项,票数,投票人名单\n";
-
-            state.data.questions.forEach(q => {
-                const qVotes = state.data.votes[q.id] || {};
-                q.options.forEach(opt => {
-                    const voters = qVotes[opt] || [];
-                    const voterStr = voters.join('; ');
-                    const cleanTitle = q.title.replace(/,/g, '，').replace(/\n/g, ' ');
-                    const cleanOpt = opt.replace(/,/g, '，');
-                    csvContent += `${cleanTitle},${cleanOpt},${voters.length},"${voterStr}"\n`;
-                });
-            });
-
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.setAttribute("href", url);
-            link.setAttribute("download", `投票结果_${state.pageId}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        // === 新增：导出选择逻辑 ===
-        function showExportModal() {
-            if(!state.data.questions || state.data.questions.length === 0) return showToast('没有数据');
-            
-            const list = document.getElementById('export-checklist');
-            list.innerHTML = '';
-            
-            state.data.questions.forEach((q, i) => {
-                const div = document.createElement('div');
-                div.className = 'export-item';
-                // 默认全选
-                div.innerHTML = `<label style="display:flex;align-items:center;width:100%;cursor:pointer;"><input type="checkbox" value="${q.id}" checked> <span style="font-weight:bold;margin-right:5px;">${i+1}.</span> ${q.title}</label>`;
-                list.appendChild(div);
-            });
-            
-            document.getElementById('export-modal').style.display = 'flex';
-        }
-
-        function confirmExportPDF() {
-            const checkboxes = document.querySelectorAll('#export-checklist input:checked');
-            if(checkboxes.length === 0) return showToast('请至少选择一道题');
-            
-            const selectedIds = Array.from(checkboxes).map(c => c.value);
-            closeModal('export-modal');
-            exportPDF(selectedIds);
-        }
-
-        // === 核心 PDF 导出功能 ===
-        async function exportPDF(selectedIds) {
-            showToast('正在生成详细报告...');
-            const { jsPDF } = window.jspdf;
-            
-            // 默认竖版 A4
-            const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
-            const container = document.getElementById('pdf-container');
-            
-            // 筛选数据
-            const targetQuestions = state.data.questions.filter(q => selectedIds.includes(q.id));
-
-            // --- 1. 数据预处理 & 关系图数据 ---
-            const userStats = {}; 
-            const graphNodes = [];
-            const graphLinks = [];
-            const addedNodes = new Set();
-            
-            targetQuestions.forEach((q, qIndex) => {
-                const qVotes = state.data.votes[q.id] || {};
-                
-                q.options.forEach(opt => {
-                    const uniqueOptName = `${qIndex + 1}. ${q.title.substring(0,8)}... \n[${opt}]`; // 节点名称换行显示更清晰
-                    const voters = qVotes[opt] || [];
-                    
-                    // 图表节点：选项 (中心点)
-                    if (voters.length > 0) { 
-                        if (!addedNodes.has(uniqueOptName)) {
-                            graphNodes.push({ 
-                                name: uniqueOptName, 
-                                symbolSize: 35 + (voters.length * 3), // 选项节点较大
-                                category: 1,
-                                label: { show: true, fontSize: 12, fontWeight: 'bold' },
-                                itemStyle: { color: '#4caf50' }
-                            });
-                            addedNodes.add(uniqueOptName);
-                        }
-                    }
-
-                    // 统计用户数据 & 构建连线
-                    voters.forEach(user => {
-                        // 文本统计
-                        if (!userStats[user]) userStats[user] = [];
-                        userStats[user].push(`[题${qIndex+1}] ${opt}`);
-
-                        // 图表节点：用户 (周围点)
-                        if (!addedNodes.has(user)) {
-                            graphNodes.push({ 
-                                name: user, 
-                                symbolSize: 15, // 用户节点较小
-                                category: 0,
-                                itemStyle: { color: '#2196f3' },
-                                label: { show: true, position: 'bottom', fontSize: 10 }
-                            });
-                            addedNodes.add(user);
-                        }
-                        
-                        // 连线
-                        graphLinks.push({ source: uniqueOptName, target: user });
-                    });
-                });
-            });
-
-            // --- 2. 渲染第一部分：按题目统计 ---
-            container.innerHTML = `<h1 style="text-align:center; padding-bottom:10px; border-bottom:2px solid #333;">投票结果总览</h1>`;
-            
-            for (let i = 0; i < targetQuestions.length; i++) {
-                const q = targetQuestions[i];
-                const qVotes = state.data.votes[q.id] || {};
-                
-                let colsHtml = '';
-                q.options.forEach(opt => {
-                    const voters = qVotes[opt] || [];
-                    const namesHtml = voters.map(n => 
-                        `<span style="display:inline-block; border:1px solid #ddd; background:#f9f9f9; padding:2px 6px; margin:2px; border-radius:4px; font-size:12px;">${n}</span>`
-                    ).join('');
-                    
-                    colsHtml += `
-                        <div style="margin-bottom:10px; break-inside: avoid;">
-                            <div style="background:#eee; padding:6px 10px; font-weight:bold; border-radius:4px; display:flex; justify-content:space-between; font-size:14px;">
-                                <span>${opt}</span>
-                                <span>${voters.length}票</span>
-                            </div>
-                            <div style="padding:5px; display:flex; flex-wrap:wrap;">${namesHtml || '<span style="color:#ccc;font-size:12px;">-</span>'}</div>
-                        </div>
-                    `;
-                });
-
-                const qHtml = `
-                    <div style="background:white; border:1px solid #eee; padding:15px; border-radius:8px; margin-bottom:15px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
-                        <h3 style="margin-bottom:10px; border-left:4px solid #333; padding-left:10px;">Q${i+1}. ${q.title}</h3>
-                        <div>${colsHtml}</div>
-                    </div>
-                `;
-                
-                const div = document.createElement('div');
-                div.innerHTML = qHtml;
-                container.appendChild(div);
-            }
-            // 截图第一部分
-            await addContainerToPdf(container, pdf, pageWidth, false);
-
-            // --- 3. 渲染第二部分：参与者详情 (分页处理) ---
-            const allUsers = Object.keys(userStats).sort();
-            const USERS_PER_PAGE = 12; // 每页显示12个用户
-            
-            for (let i = 0; i < allUsers.length; i += USERS_PER_PAGE) {
-                const userBatch = allUsers.slice(i, i + USERS_PER_PAGE);
-                
-                container.innerHTML = '';
-                // 只有第一页显示大标题，后续显示“续”
-                const title = i === 0 ? "参与者明细" : "参与者明细 (续)";
-                let batchHtml = `<h2 style="text-align:center; margin-bottom:20px; border-bottom:1px solid #999; padding-bottom:10px;">${title}</h2><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">`;
-                
-                userBatch.forEach(user => {
-                    const history = userStats[user].join('<br>');
-                    batchHtml += `
-                        <div style="border:1px solid #ccc; padding:10px; border-radius:6px; break-inside: avoid; background:#fff;">
-                            <div style="font-weight:bold; font-size:16px; border-bottom:1px solid #eee; margin-bottom:5px; color:#2196f3;">${user}</div>
-                            <div style="font-size:12px; color:#555; line-height:1.4;">${history}</div>
-                        </div>
-                    `;
-                });
-                batchHtml += `</div>`;
-                container.innerHTML = batchHtml;
-                
-                // 每一批次都添加新页 (除了如果是第一部分内容很少导致的第一页空白，但简单起见我们每次都addPage)
-                await addContainerToPdf(container, pdf, pageWidth, true);
-            }
-
-            // --- 4. 渲染第三部分：横版关系图谱 ---
-            container.innerHTML = '';
-            // 临时将容器设为横版比例
-            container.style.width = '1100px'; 
-            
-            const chartTitle = document.createElement('div');
-            chartTitle.innerHTML = `<h1 style="text-align:center; margin-bottom:10px;">项目-人员 关系图谱</h1>`;
-            container.appendChild(chartTitle);
-
-            const chartDiv = document.createElement('div');
-            chartDiv.style.width = '1100px';
-            chartDiv.style.height = '700px'; // 宽 > 高，适合横版
-            container.appendChild(chartDiv);
-
-            const myChart = echarts.init(chartDiv, null, { renderer: 'svg' });
-            const option = {
-                animation: false,
-                series: [{
-                    type: 'graph',
-                    layout: 'force',
-                    data: graphNodes,
-                    links: graphLinks,
-                    categories: [{ name: '参与者' }, { name: '选项' }],
-                    roam: false,
-                    label: { show: true },
-                    force: {
-                        repulsion: 800,   // 更大的斥力，让节点散开
-                        edgeLength: 150,  // 更长的连线
-                        gravity: 0.1      // 弱引力，保持中心
-                    },
-                    lineStyle: { opacity: 0.4, curveness: 0.1 }
-                }]
-            };
-            myChart.setOption(option);
-            await new Promise(r => setTimeout(r, 1200)); // 等待布局
-
-            // 添加横版页面
-            pdf.addPage('a4', 'l'); // 'l' = landscape
-            const landscapeWidth = pdf.internal.pageSize.getWidth(); // 297mm
-            
-            // 截图并添加到横版页
-            await addContainerToPdf(container, pdf, landscapeWidth, false);
-            
-            // 恢复容器
-            container.style.width = '800px'; 
-            container.innerHTML = ''; 
-
-            pdf.save(`投票报告_${state.pageId}.pdf`);
-            showToast('PDF 下载完成');
-        }
-
-        // PDF 截图辅助函数
-        async function addContainerToPdf(element, pdf, pdfWidth, addNewPage) {
-            try {
-                const canvas = await html2canvas(element, { scale: 2, useCORS: true, logging: false });
-                const imgData = canvas.toDataURL('image/jpeg', 0.95);
-                const imgProps = pdf.getImageProperties(imgData);
-                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-                
-                if (addNewPage) pdf.addPage();
-                // 留一点边距
-                pdf.addImage(imgData, 'JPEG', 10, 10, pdfWidth - 20, pdfHeight); 
-            } catch (err) {
-                console.error("PDF生成错误:", err);
-            }
-        }
-
-        // === 辅助函数 ===
         function toggle(qid, opt) {
             if(!state.temp[qid]) state.temp[qid] = [...getMyVotes(qid)];
             const i = state.temp[qid].indexOf(opt);
@@ -933,15 +419,189 @@
             } else showToast('密码错误');
         }
         function addOptLine(value = '') {
-            const i = document.createElement('input'); 
-            i.className = 'input opt-input'; 
-            i.style.marginBottom='8px'; 
-            i.placeholder='选项内容';
-            i.value = value;
+            const i = document.createElement('input'); i.className = 'input opt-input'; i.style.marginBottom='8px'; i.placeholder='选项'; i.value = value;
             document.getElementById('q-opts').appendChild(i);
         }
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.style.display='block'; setTimeout(()=>t.style.display='none',2000); }
+
+        // === 导出相关 ===
+        function showExportModal() {
+            if(!state.data.questions || state.data.questions.length === 0) return showToast('没有数据');
+            const list = document.getElementById('export-checklist');
+            list.innerHTML = '';
+            state.data.questions.forEach((q, i) => {
+                list.innerHTML += `<div class="export-item"><label style="display:flex;align-items:center;width:100%;cursor:pointer;"><input type="checkbox" value="${q.id}" checked> <span style="font-weight:bold;margin:0 5px;">${i+1}.</span> ${q.title}</label></div>`;
+            });
+            document.getElementById('export-modal').style.display = 'flex';
+        }
+        function confirmExportPDF() {
+            const boxes = document.querySelectorAll('#export-checklist input:checked');
+            if(boxes.length === 0) return showToast('请选择题目');
+            closeModal('export-modal');
+            exportPDF(Array.from(boxes).map(c => c.value));
+        }
+
+        // === 核心：完美分页导出 ===
+        async function exportPDF(selectedIds) {
+            showToast('生成中，请勿关闭页面...');
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4'); // Portrait, A4
+            
+            // A4 尺寸常数
+            const pageWidth = 210;
+            const pageHeight = 297;
+            const margin = 10;
+            const contentWidth = pageWidth - (margin * 2);
+            const contentHeightLimit = pageHeight - (margin * 2); // 每页可用高度
+
+            let cursorY = margin; // 当前页面的垂直光标位置
+
+            const container = document.getElementById('pdf-container');
+            const targetQuestions = state.data.questions.filter(q => selectedIds.includes(q.id));
+            
+            // 辅助：处理添加图片和自动换页
+            async function addElementToPdf(htmlContent) {
+                container.innerHTML = htmlContent;
+                // 使用 html2canvas 截图，固定 scale 保证清晰度
+                const canvas = await html2canvas(container, { scale: 2, useCORS: true, logging: false });
+                const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                const imgProps = pdf.getImageProperties(imgData);
+                
+                // 计算图片在PDF中的实际高度 (按宽度缩放)
+                const pdfImgHeight = (imgProps.height * contentWidth) / imgProps.width;
+
+                // 检查是否需要翻页
+                if (cursorY + pdfImgHeight > contentHeightLimit) {
+                    pdf.addPage();
+                    cursorY = margin;
+                }
+
+                pdf.addImage(imgData, 'JPEG', margin, cursorY, contentWidth, pdfImgHeight);
+                cursorY += pdfImgHeight + 5; // 增加光标，留5mm间距
+            }
+
+            // --- 1. 题目统计 (瀑布流模式) ---
+            await addElementToPdf(`<h1 style="text-align:center;border-bottom:2px solid #333;padding-bottom:10px;">投票结果报告</h1>`);
+
+            for (let i = 0; i < targetQuestions.length; i++) {
+                const q = targetQuestions[i];
+                const qVotes = state.data.votes[q.id] || {};
+                
+                let colsHtml = '';
+                q.options.forEach(opt => {
+                    const voters = qVotes[opt] || [];
+                    const namesHtml = voters.map(n => `<span style="display:inline-block;border:1px solid #ddd;background:#f9f9f9;padding:2px 6px;margin:2px;border-radius:4px;font-size:12px;">${n}</span>`).join('');
+                    colsHtml += `<div style="margin-bottom:10px;"><div style="background:#eee;padding:6px 10px;font-weight:bold;border-radius:4px;display:flex;justify-content:space-between;font-size:14px;"><span>${opt}</span><span>${voters.length}票</span></div><div style="padding:5px;">${namesHtml||'<span style="color:#ccc;font-size:12px">-</span>'}</div></div>`;
+                });
+
+                // 每次只渲染一个题目，确保不会被截断
+                const qHtml = `<div style="background:white;border:1px solid #ccc;padding:15px;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,0.05);"><h3 style="margin-bottom:10px;border-left:4px solid #333;padding-left:10px;">Q${i+1}. ${q.title}</h3><div>${colsHtml}</div></div>`;
+                await addElementToPdf(qHtml);
+            }
+
+            // --- 2. 参与者详情 (瀑布流模式) ---
+            pdf.addPage(); 
+            cursorY = margin;
+            await addElementToPdf(`<h2 style="text-align:center;border-bottom:1px solid #999;padding-bottom:10px;">参与者明细</h2>`);
+
+            // 整理数据
+            const userStats = {};
+            targetQuestions.forEach((q, idx) => {
+                const qVotes = state.data.votes[q.id] || {};
+                q.options.forEach(opt => {
+                    (qVotes[opt]||[]).forEach(u => {
+                        if(!userStats[u]) userStats[u] = [];
+                        userStats[u].push(`[题${idx+1}] ${opt}`);
+                    });
+                });
+            });
+
+            const allUsers = Object.keys(userStats).sort();
+            const BATCH_SIZE = 6; // 每次渲染6个人，防止单个图片过长
+            
+            for(let i=0; i<allUsers.length; i+=BATCH_SIZE) {
+                const batch = allUsers.slice(i, i+BATCH_SIZE);
+                let batchHtml = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">`;
+                batch.forEach(u => {
+                    batchHtml += `<div style="border:1px solid #ccc;padding:10px;border-radius:6px;background:#fff;"><div style="font-weight:bold;color:#2196f3;border-bottom:1px solid #eee;margin-bottom:5px;">${u}</div><div style="font-size:12px;color:#555;">${userStats[u].join('<br>')}</div></div>`;
+                });
+                batchHtml += `</div>`;
+                await addElementToPdf(batchHtml);
+            }
+
+            // --- 3. 关系图 (横版) ---
+            // 准备数据
+            const graphNodes = [];
+            const graphLinks = [];
+            const added = new Set();
+            targetQuestions.forEach((q, qi) => {
+                const qVotes = state.data.votes[q.id] || {};
+                q.options.forEach(opt => {
+                    const voters = qVotes[opt] || [];
+                    if(voters.length === 0) return;
+                    // 中心节点：选项
+                    const optId = `Q${qi+1}-${opt}`;
+                    const optLabel = `Q${qi+1}\n${opt}`;
+                    if(!added.has(optId)) {
+                        graphNodes.push({ name: optId, value: optLabel, symbolSize: 30 + (voters.length*4), category: 1, itemStyle: {color:'#4caf50'}, label: {show:true, formatter: '{c}', fontWeight:'bold'} });
+                        added.add(optId);
+                    }
+                    // 周围节点：人
+                    voters.forEach(u => {
+                        if(!added.has(u)) {
+                            graphNodes.push({ name: u, value: u, symbolSize: 15, category: 0, itemStyle: {color:'#2196f3'}, label: {show:true, position:'bottom', fontSize:10} });
+                            added.add(u);
+                        }
+                        graphLinks.push({ source: optId, target: u });
+                    });
+                });
+            });
+
+            // 渲染图表
+            container.innerHTML = '';
+            const chartW = 1000, chartH = 650; // 横版尺寸
+            container.style.width = chartW + 'px';
+            
+            const titleDiv = document.createElement('div');
+            titleDiv.innerHTML = `<h1 style="text-align:center;">项目-人员 关系图谱</h1>`;
+            container.appendChild(titleDiv);
+
+            const chartDiv = document.createElement('div');
+            chartDiv.style.width = chartW + 'px';
+            chartDiv.style.height = chartH + 'px';
+            container.appendChild(chartDiv);
+
+            const myChart = echarts.init(chartDiv, null, { renderer: 'svg' });
+            myChart.setOption({
+                animation: false,
+                series: [{
+                    type: 'graph', layout: 'force',
+                    data: graphNodes, links: graphLinks,
+                    roam: false,
+                    label: { show: true },
+                    force: { repulsion: 800, edgeLength: 120, gravity: 0.15 }, // 引力强一点让图居中
+                    lineStyle: { opacity: 0.3 }
+                }]
+            });
+            
+            // 等待图表稳定
+            await new Promise(r => setTimeout(r, 1500));
+
+            // 添加横版页面
+            pdf.addPage('l'); // Landscape
+            const lWidth = 297; // A4横版宽
+            const lCanvas = await html2canvas(container, { scale: 1.5 }); // 图表不需要太高倍率
+            const lImg = lCanvas.toDataURL('image/jpeg', 0.9);
+            pdf.addImage(lImg, 'JPEG', 10, 10, lWidth-20, (lCanvas.height/lCanvas.width)*(lWidth-20));
+
+            // 恢复容器
+            container.style.width = '750px';
+            container.innerHTML = '';
+            
+            pdf.save(`Report_${state.pageId}.pdf`);
+            showToast('下载完成');
+        }
     </script>
 </body>
 </html>
